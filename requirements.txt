@@ -53,6 +53,7 @@ testpath
 torch
 torchvision
 tornado
+tqdm
 traitlets
 wcwidth
 webencodings
