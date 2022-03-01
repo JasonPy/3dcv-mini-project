@@ -1,209 +1,211 @@
+from collections.abc import Callable
+from msilib.schema import Feature
+from typing import Tuple
+
 import numpy as np
 import tqdm
 
+from feature_extractor import FeatureExtracor
 
 class Node:
-    def __init__(self, evalFunction, initialParams = []):
-        self.params = initialParams
-        self.evalFunction = evalFunction
-        self.leftChild = None
-        self.rightChild = None
-        self.response = None
+    # TODO: Think about this! Might want to decouple feature function from image data after all?
+    def __init__(self, feature_function: Callable[[np.array, np.array], bool], initial_params = any):
+        """
+        Create a new node with a given feature_function and initial parameters
+
+        Parameters
+        ----------
+        feature_function: Callable[[np.array, np.array], bool]
+            The feature function used to in this node
+        initial_params: any
+            The initial parameters for this node. Used for loading
+            trained tree
+        """
+        self.feature_function = feature_function
+        
+        self.params = initial_params
+        self.leared_response = None
+        
+        self.left_child = None
+        self.right_child = None
 
     def is_leaf(self):
-        return (self.leftChild is None) and (self.leftRight is None)
+        return (self.left_child is None) and (self.right_child is None)
 
-    def evaluate(self, p):
-        output = self.evalFunction(self.params, p)
+    def evaluate(self, p: np.array) -> any:
+        """
+        Evaluate the tree recursively starting at this node.
+
+        Parameters
+        ----------
+        p: np.array
+            Input feature (pixel coordinates)
+        
+        Returns
+        -------
+        any
+            The response at the leaf node. Evaluated recursively
+
+        """
+        output = self.feature_function(self.params, p)
         if self.is_leaf():
-            return self.response
+            return self.leared_response
 
-        nextNode = self.rightChild if output else self.leftChild
+        nextNode = self.right_child if output else self.left_child
         return nextNode.evaulate(p)
 
-    def train(self, data):
-        # TODO: we need the corresponding image and depth map here to calculate features:
-        # To evaluate a regression tree at a 2D pixel location p in an image, we start at 
-        # the root node and descend to a leaf by repeatedly evaluating the weak learner
-        # smt like ->   data = [[p, m, img, depth_map], [...]]
-        data = [[p, m], [...]]
+    def train(self,
+        depth: int,
+        data: np.array,
+        objective_function: Callable[[np.array, np.array], bool],
+        param_sampler: Callable[[int], np.array],
+        num_param_samples: int,
+        max_depth: int
+        ) -> None:
+        """
+        Train this node on the data using the objective_function
 
-        param_cadidates = []
-        # sample
+        Parameters
+        ----------
+        depth: int
+            The current tree depth. Used for constraint on tree depth
 
-        best_score_Q = None
-        best_params = None
-        best_set_left = []
-        best_set_right = []
+        data: np.array
+            The data used to train the node. Expected format:
+            data = [[input_feature_0, ..1, ...], [target_response_0, ..1, ...]]
 
-        for params in param_cadidates:
+        num_param_samples: int
+            The number of parameter samples to evaluate
 
-            left_set, right_set = [], []
-            for (p, m) in data:
-                output = self.evalFunction(p, params) 
-                # TODO: die Funktion evalFunction erwartet beim erstellen der features
-                # die zugehörige depth map als 2D Matrix und das ganze Bild als 3D RGB 
-                if (output == True):
-                    right_set.append((p, m))
-                else:
-                    left_set.append((p, m))
+        max_depth: int
+            The maximum allowed depth of the tree. Use mode fitting if reached
 
-            Q = calculate_Q(right_set, left_set)
+        def objective_function(set_left: np.array, set_right: np.array) -> float:
+            The objective function to min/maximise. It rates the quality of the
+            split achived by this node (for a certian set of params).
+            Parameters
+            ----------
+            set_left: np.array
+                The left set after this node's split (formatted like data)
+            set_right: np.array
+                The right set after this node's split (formatted like data)
+            Returns
+            -------
+            float judging the quality of this split
+        
+        def param_sampler(number: int) -> np.array
+            The function used to sample from the parameter space for the node
+            split parameters
+            Parameters
+            ----------
+            number: int
+                The number of parameter samples to generate
+            Returns
+            -------
+            np.array of the paramters
 
-            if (Q > best_score_Q):
-                best_score_Q = Q
-                best_params = params
-                best_set_left = left_set
-                best_set_right = right_set
+        """
+
+        param_split_masks = []
+
+        feature_function_vec = np.vectorize(self.feature_function, excluded=['p'])
+        def evalulate_data_with_params (params: np.array) -> float:
+            """
+            Evaluate a single set of parameters on the whole data-set.
+            Returns the objective-functions judgement
+            """
+            param_split_mask = feature_function_vec(input_features, params)
+            param_split_masks.append(param_split_mask)
+
+            left_split_features = input_features[param_split_mask]
+            right_split_features = input_features[param_split_mask == False]
+            left_split_responses = target_responses[param_split_mask]
+            right_split_responses = target_responses[param_split_mask == False]
+
+            set_left = np.array([left_split_features, left_split_responses])
+            set_right = np.array([right_split_features, right_split_responses])
+            return objective_function(set_left, set_right)
+
+        input_features = data[0]
+        target_responses = data[1]
+
+        if len(input_features) == 0:
+            # This node only received a set of size one. It should be a leaf node
+            self.left_child = None
+            self.right_child = None
+            self.leared_response = target_responses[0]
+            return
+
+        if depth == max_depth:
+            # This node reached maximum tree depth. It should be a leaf node
+            self.left_child = None
+            self.right_child = None
+            # TODO: Implement mode fitting (mean filtering?) on target_responses
+            self.leared_response = np.mean(target_responses, axis=0)
+            return    
+
+        evalulate_data_with_params_vec = np.vectorize(evalulate_data_with_params)
+        param_samples = param_sampler(num_param_samples)
+        param_scores = evalulate_data_with_params_vec(param_samples)
+
+        best_param_index = np.argmax(param_scores)
+        best_params = param_samples[best_param_index]
+        best_split_mask = param_split_masks[best_param_index]
+
+        # Yes, this calculation is done twice. Should be worth the memory saved by only remebering the mask,
+        # instaed of keeping copies of the complete feature and response sets
+        # Could be avoided by keeping running best_{set_left, set_right, params} varaibles. This might be
+        # a problem for parallelization though.
+        best_set_left = (input_features[best_split_mask], target_responses[best_split_mask])
+        best_set_right = (input_features[best_split_mask == False], target_responses[best_split_mask == False])
 
         self.params = best_params
-        
+        self.left_child = Node(self.feature_function)
+        self.right_child = Node(self.feature_function)
 
+        self.left_child.train(depth + 1, best_set_left, objective_function, param_sampler, num_param_samples, max_depth)
+        self.right_child.train(depth + 1, best_set_right, objective_function, param_sampler, num_param_samples, max_depth)
+
+                
+
+"""
+Vincenco's (some friend) idea:
+
+google "pre pruning"
+use shannon entropy in objective function?
+"""
 class RegressionTree:
-    def __init__(self, evalFunction, maxDepth):
-        self.root = Node(evalFunction)
-        self.evalFunction = evalFunction
-        self.maxDepth = maxDepth
-        self.isTrained = False
+    def __init__(self, feature_function, max_depth: int):
+        self.root = Node(feature_function)
+        self.feature_function = feature_function
+        self.max_depth = max_depth
+        self.is_trained = False
 
     def evaulate(self, p):
-        if not self.isTrained:
+        if not self.is_trained:
             raise Exception('Error: Tree is not trained yet!')
         return self.root.evaluate(p)
 
     def train(self, data):
-        [images, depth_map, pose_matrices] = data
-        # TODO: we need depthmap, must pass to node
-        
+
+        """
+        TODO:
+        * FeatureExtractor currently acts as a holder for data from one image (pose, rgb, depth).
+          Can be used to generate (input_feature, target_respose) sample pairs. Might need to pass
+          the feature_extractor instance for each set of (num_samples) samples into the nodes for
+          training (where feature_function needs to be evaluated) and evaluation.
+          
+        * Whole tree training. Depends on FeatureExtractor reference handling.
+        * Plant a whole forest.
+        """
+
+
+        # TODO: Cleanup
         samples = []
         for i in tqdm(range(len(images))):
             image = images[i]
             pose = pose_matrices[i]
             samples.append(get_sample_pixels(image.shape, depth_map, pose, num_samples=100))
 
-        # TODO: start training by calling train at root node
-       
-        # self.isTrained = True
-            ...
-
-
-def get_sample_pixels (img_shape, depth_map, pose, num_samples):
-    m, n = img_shape
-
-    indices = np.random.choice(m * n, num_samples, replace=True)
-    p = [(c % m, c / m) for c in indices]
-    p_ext = [(x, y, depth_map[x, y], 1) for (x, y) in p]
-
-    m = (pose @ p_ext)[:,:-1]
-    # TODO: make sure this actually works
-    return p, m
-
-
-def depth_feature(p: np.array, depth_map: np.array, params:any, fill_value=6000) -> float:
-    """
-    For an pixel coordinate p and corresponding image depth map
-    obtain the image feature according to variant 'Depth'
-
-    Parameters
-    ----------
-    p: np.array 
-        containing the pixel coordinates (x,y)
-    depth_map: np.array
-        the images depth values in millimeters
-    params: 
-        parameters defined for each node
-    fill_value: float
-        fill invalid depth values with distance in millimeters
-
-    Returns
-    ----------
-    feature value for pixel at position p
-    """
-    (tau, delta1, delta2, c1, c2, z) = params
-    
-    # check if the depth value is defined for initial pixel coordinate p
-    if is_valid_index(depth_map, p):
-        p1 = p + delta1/depth_map[p[0], p[1]] 
-        p2 = p + delta2/depth_map[p[0], p[1]] 
-    else:
-        p1 = p + delta1/fill_value 
-        p2 = p + delta2/fill_value
-
-    # make sure to use integer coordinates
-    p1 = int(p1)
-    p2 = int(p2)
-
-    # check if new pixel lookup with p1 and p2 is valid
-    d1 = depth_map[p1[0],p1[1]] if is_valid_index(depth_map, p1) else fill_value
-    d2 = depth_map[p2[0],p2[1]] if is_valid_index(depth_map, p2) else fill_value
-
-    return d1 - d2
-
-
-def da_rgb_feature(p: np.array, depth_map: np.array, img: np.array, params:any, fill_value=6000) -> float:
-    """
-    For an pixel coordinate p, corresponding image and depth map
-    obtain the image feature according to variant 'Depth-Adaptive RGB'
-
-    Parameters
-    ----------
-    p: np.array 
-        containing the pixel coordinates (x,y)
-    depth_map: np.array
-        the images depth values in millimeters
-    img: np.array
-        the image as rgb 
-    params: 
-        parameters defined for each node
-    fill_value: float
-        fill invalid depth values with distance in millimeters
-
-    Returns
-    ----------
-    feature value for pixel at position p
-    """
-    (tau, delta1, delta2, c1, c2, z) = params
-
-    # check if the depth value is defined for initial pixel coordinate p
-    if is_valid_index(depth_map, p):
-        p1 = p + delta1/depth_map[p[0], p[1]] 
-        p2 = p + delta2/depth_map[p[0], p[1]] 
-    else:
-        p1 = p + delta1/fill_value 
-        p2 = p + delta2/fill_value
-
-    # make sure to use integer coordinates
-    p1 = int(p1)
-    p2 = int(p2)
-
-    # TODO: what is the fill value here? neglect this pixel?
-    i1 = img[p1[0], p1[1], c1] if in_bounds(depth_map.shape, p1) else None
-    i2 = img[p2[0], p2[1], c2] if in_bounds(depth_map.shape, p2) else None
-
-    return i1 - i2
-
-
-def da_rgb_d_feature(params, p_array):
-    # TODO: how to combine depth and da_rgb feature values?
-    ...
-
-
-def is_valid_index(matrix: np.array, index: int) -> bool:
-    """
-    Check if a pixel lookup is valid by checking for None value
-    and if the pixel coordinate lays inside the image boundary
-    """
-    if not in_bounds(matrix.shape, index) or matrix[index[0], index[1]] is None:
-        return False
-    else: 
-        return True
-
-
-def in_bounds(matrix_shape: tuple, index: int) -> bool:
-    """
-    Check if a given index is in the range of a matrix boundary
-    """
-    for s in matrix_shape[:2]:
-        if index[0] > s or index[0] < 0:
-            return False
-    return True
+        # start training by calling train at root node
+        # self.is_trained = True
