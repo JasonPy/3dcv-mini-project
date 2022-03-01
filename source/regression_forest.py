@@ -1,5 +1,8 @@
+from nis import match
 import numpy as np
+from enum import Enum
 import tqdm
+
 
 
 class Node:
@@ -99,51 +102,20 @@ def get_sample_pixels (img_shape, depth_map, pose, num_samples):
     return p, m
 
 
-def depth_feature(p: np.array, depth_map: np.array, params:any, fill_value=6000) -> float:
+class FeatureType(Enum):
     """
-    For an pixel coordinate p and corresponding image depth map
-    obtain the image feature according to variant 'Depth'
-
-    Parameters
-    ----------
-    p: np.array 
-        containing the pixel coordinates (x,y)
-    depth_map: np.array
-        the images depth values in millimeters
-    params: 
-        parameters defined for each node
-    fill_value: float
-        fill invalid depth values with distance in millimeters
-
-    Returns
-    ----------
-    feature value for pixel at position p
+    This bass class represents the three different feature types
+    including 'Depth', 'Depth-Adaptive RGB' and 'Depth-Adaptive RGB + Depth'
     """
-    (tau, delta1, delta2, c1, c2, z) = params
+    DEPTH = 1
+    DA_RGB = 2
+    DA_RGB_DEPTH = 3
+
     
-    # check if the depth value is defined for initial pixel coordinate p
-    if is_valid_index(depth_map, p):
-        p1 = p + delta1/depth_map[p[0], p[1]] 
-        p2 = p + delta2/depth_map[p[0], p[1]] 
-    else:
-        p1 = p + delta1/fill_value 
-        p2 = p + delta2/fill_value
-
-    # make sure to use integer coordinates
-    p1 = int(p1)
-    p2 = int(p2)
-
-    # check if new pixel lookup with p1 and p2 is valid
-    d1 = depth_map[p1[0],p1[1]] if is_valid_index(depth_map, p1) else fill_value
-    d2 = depth_map[p2[0],p2[1]] if is_valid_index(depth_map, p2) else fill_value
-
-    return d1 - d2
-
-
-def da_rgb_feature(p: np.array, depth_map: np.array, img: np.array, params:any, fill_value=6000) -> float:
+def get_feature(p: np.array, depth_map: np.array, img: np.array, params:any, type=FeatureType.DEPTH):
     """
-    For an pixel coordinate p, corresponding image and depth map
-    obtain the image feature according to variant 'Depth-Adaptive RGB'
+    For a pixel coordinate p, corresponding image and depth map 
+    as well as regression parameters obtain an image feature
 
     Parameters
     ----------
@@ -161,49 +133,58 @@ def da_rgb_feature(p: np.array, depth_map: np.array, img: np.array, params:any, 
     Returns
     ----------
     feature value for pixel at position p
+    or None if invalid depth value encountered
     """
     (tau, delta1, delta2, c1, c2, z) = params
 
     # check if the depth value is defined for initial pixel coordinate p
-    if is_valid_index(depth_map, p):
-        p1 = p + delta1/depth_map[p[0], p[1]] 
-        p2 = p + delta2/depth_map[p[0], p[1]] 
+    if is_valid_depth(depth_map, p):
+        p1 = p + delta1/depth_map[p[1], p[0]] 
+        p2 = p + delta2/depth_map[p[1], p[0]] 
     else:
-        p1 = p + delta1/fill_value 
-        p2 = p + delta2/fill_value
+        return None
 
     # make sure to use integer coordinates
-    p1 = int(p1)
-    p2 = int(p2)
+    p1 = p1.astype(int)
+    p2 = p2.astype(int)
 
-    # TODO: what is the fill value here? neglect this pixel?
-    i1 = img[p1[0], p1[1], c1] if in_bounds(depth_map.shape, p1) else None
-    i2 = img[p2[0], p2[1], c2] if in_bounds(depth_map.shape, p2) else None
+    if type is FeatureType.DEPTH:
+        if is_valid_depth(depth_map, p1) and is_valid_depth(depth_map, p2):
+            d1 = depth_map[p1[1],p1[0]] 
+            d2 = depth_map[p2[1],p2[0]]
+            return d1 - d2
+        else:
+            return None
 
-    return i1 - i2
+    elif type is FeatureType.DA_RGB:
+        if in_bounds(depth_map.shape, p1) and in_bounds(depth_map.shape, p2):
+            i1 = img[p1[1], p1[0], c1] 
+            i2 = img[p2[1], p2[0], c2]
+            return i1 - i2
+        else:
+            return None
 
+    elif type is FeatureType.DA_RGB_DEPTH:
+        raise NotImplementedError()
+   
 
-def da_rgb_d_feature(params, p_array):
-    # TODO: how to combine depth and da_rgb feature values?
-    ...
-
-
-def is_valid_index(matrix: np.array, index: int) -> bool:
+def is_valid_depth(depth_map: np.array, p: np.array, invalid_value=65535) -> bool:
     """
-    Check if a pixel lookup is valid by checking for None value
+    Check if a pixel lookup is valid by checking for invalid depth value
     and if the pixel coordinate lays inside the image boundary
     """
-    if not in_bounds(matrix.shape, index) or matrix[index[0], index[1]] is None:
-        return False
-    else: 
+    if depth_map[p[1], p[0]] == invalid_value or not in_bounds(depth_map.shape, p):
         return True
+    else:
+        return False
 
 
-def in_bounds(matrix_shape: tuple, index: int) -> bool:
+def in_bounds(matrix_shape: tuple, index: np.array) -> bool:
     """
     Check if a given index is in the range of a matrix boundary
+    by determining if its value is below zero or above the image size
     """
-    for s in matrix_shape[:2]:
-        if index[0] > s or index[0] < 0:
-            return False
-    return True
+    if index[0] < 0 or index[1] < 0 or index[0] > matrix_shape[1] or index[1] > matrix_shape[0]:
+        return True
+    else:
+        return False
