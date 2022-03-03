@@ -114,13 +114,46 @@ class SampleHolder:
 class DataHolder:
     def __init__(self, samples: List[SampleHolder] = []):
         """
+        Holds a set of SampleHolders and allows vectorized masking
+
+        Parameters
+        ----------
+        samples: List[SampleHolder]
+            The initial list of SampleHolders to construct this DataHolder with
         """
         self.samples = samples
 
     def __len__(self):
+        """
+        Returns
+        -------
+        The number of SampleHolders in this DataHolder
+        """
         return len(self.samples)
 
     def __getitem__(self, argument: Union[int, List[np.array]]) -> Union['DataHolder', SampleHolder]:
+        """
+        Array access operator. Supports element access (indexed by SampleHolder)
+        and masking of complete list of Samples (indexed by nested masks)
+
+        Parameters
+        ----------
+        argument == int
+            The SampleHolder index
+
+            Returns
+            -------
+            SampleHolder
+
+        argument == List[np.array]
+            The nested masks to apply to this DataHolder. len(argument) should be == len(self)
+            len(argument[i]) should be == len(self[i])
+
+            Returns
+            -------
+            DataHolder with recursivley applied masks. Empty SampleHolders are pruned
+
+        """
         if isinstance(argument, int):
             return self.samples[argument]
         
@@ -137,10 +170,31 @@ class DataHolder:
 
             return data_masked
     
-    def add_samples(self, sample: SampleHolder):
+    def add_samples(self, sample: SampleHolder) -> None:
+        """
+        Add a SampleHodler to this DataHolder
+        TODO: Maybe merge with existing SampleHolder on equal FeatureExtractor?
+
+        Parameters
+        ----------
+        sample: SampleHolder
+            The list of samples to add
+        """
         self.samples.append(sample)
 
     def get_all_sample_data_points(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Return all sample data points (input feature and target response)
+        in all SampleHolders.
+        
+        Returns
+        -------
+        (p_s, w_s) : Tuple[np.ndarray, np.ndarray]
+            p_s: np.ndarray
+                The input_feature data points (image coordinates)
+            w_s: np.ndarray
+                The target_response data points (3d world coordinates)
+        """
         total_samples = sum([len(sample_holder) for sample_holder in self.samples])
         single_p = self.samples[0].p_s[0]
         single_w = self.samples[0].w_s[0]
@@ -161,6 +215,17 @@ class DataHolder:
         return (p_s_total, w_s_total)
 
 def sample_from_feature_extractor(feature_extractor: FeatureExtracor, num_samples: int) -> SampleHolder:
+    """
+    Generate a single SampleHolder containing num_samples samples from the given
+    FeatureExtractor
+
+    Parameters
+    ----------
+    feature_extractor: FeatureExtractor
+        The FeatureExtractor (image) to sample from
+    num_samples: int
+        The number of samples to draw
+    """
     (p_s, w_s) = feature_extractor.generate_data_samples(num_samples)
     return SampleHolder(feature_extractor, p_s, w_s)
 
@@ -190,4 +255,3 @@ def sample_from_data_set(images_rgb: np.array, images_depth: np.array, camera_po
         data_holder.add_samples(samples)
     
     return data_holder
-
