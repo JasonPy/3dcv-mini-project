@@ -2,10 +2,11 @@ from collections.abc import Callable
 from typing import Tuple, List
 
 import numpy as np
-import tqdm
+from tqdm import tqdm
 
 from feature_extractor import FeatureExtractor, FeatureType
-from data_holer import DataHolder, SampleHolder, Sample
+from data_holder import DataHolder, SampleHolder, Sample
+from utils import millis
 
 def objective_reduction_in_variance (
     set_complete: DataHolder,
@@ -32,10 +33,10 @@ def objective_reduction_in_variance (
     num_samples = len(w_complete)
     fac_left = len(w_left) / num_samples
     fac_right = len(w_right) / num_samples
+    var_left = 0 if fac_left == 0 else np.var(np.linalg.norm(w_left, axis=1))
+    var_right = 0 if fac_right == 0 else np.var(np.linalg.norm(w_right, axis=1))
 
-    return np.var(np.linalg.norm(w_complete)) \
-        - fac_left * np.var(np.linalg.norm(w_left, axis=1)) \
-        - fac_right * np.var(np.linalg.norm(w_right, axis=1))
+    return np.var(np.linalg.norm(w_complete)) - fac_left * var_left - fac_right * var_right
 
 
 """
@@ -61,7 +62,7 @@ class Node:
         self.feature_type = feature_type
         
         self.params = initial_params
-        self.best_score = 0
+        self.best_score = -np.inf
         self.best_set_right = None
         self.best_set_left = None
         self.leared_response = None
@@ -157,10 +158,13 @@ class Node:
         """
 
         if reset:
-            self.best_score = 0
+            self.best_score = -np.inf
             self.leared_response = None
             self.left_child = None
             self.right_child = None
+
+        if len(data) == 0:
+            return
 
         if depth == max_depth or len(data) == 1:
             # This should be a leaf node
@@ -174,24 +178,53 @@ class Node:
             self.left_child = Node(self.feature_type, None) if self.left_child == None else self.left_child
             self.right_child = Node(self.feature_type, None) if self.right_child == None else self.right_child
  
-        param_samples = param_sampler(num_param_samples)
-        for param_sample in param_samples:
+        def calculate_score(param_sample):
             split_mask = data.get_features_with_parameters(param_sample, self.feature_type)
             split_mask_inverted = [mask == False for mask in split_mask]
             set_left = data[split_mask]
             set_right = data[split_mask_inverted]
-            score = objective_function(data, set_left, set_right)
+            split_mask = None
+            split_mask_inverted = None
+            return (objective_function(data, set_left, set_right), set_left, set_right)
 
+        then = millis()
+
+        param_samples = param_sampler(num_param_samples)
+        # results = []
+        # if (len(data) > 20):
+        #     print(len(data))
+        #     with Pool() as p:
+        #         results = p.map(calculate_score, param_samples, chunksize=200)
+        # else:
+        results = map(calculate_score, param_samples)
+
+        for param_sample, result in zip(param_samples, results):
+            score, set_left, set_right = result
             if score > self.best_score:
                 self.best_score = score
                 self.params = param_sample
                 self.best_set_left = set_left
                 self.best_set_right = set_right
 
-        self.left_child.train(depth + 1, self.best_set_left, objective_function,
-                              param_sampler, num_param_samples, max_depth)
-        self.right_child.train(depth + 1, self.best_set_right, objective_function,
-                              param_sampler, num_param_samples, max_depth)                
+        results = None
+
+        delta = millis() - then
+        evaluations = len(data) * num_param_samples
+        print(f'Training with {(evaluations / delta):3.3F}Kev/s {("-" * (depth + 1))}')
+
+        if len(self.best_set_left) == 0:
+            self.left_child = None
+            self.right_child = None
+            self.leared_response = np.mean(self.best_set_right.get_all_sample_data_points()[1], axis=0)
+        elif len(self.best_set_right) == 0:
+            self.left_child = None
+            self.right_child = None
+            self.leared_response = np.mean(self.best_set_left.get_all_sample_data_points()[1], axis=0)
+        else:
+            self.left_child.train(depth + 1, self.best_set_left, objective_function,
+                                param_sampler, num_param_samples, max_depth)
+            self.right_child.train(depth + 1, self.best_set_right, objective_function,
+                                param_sampler, num_param_samples, max_depth)                
 
 class RegressionTree:
     def __init__(self,
@@ -200,7 +233,7 @@ class RegressionTree:
         param_sampler: Callable[[int], np.array],
         objective_function: Callable[[DataHolder, DataHolder, DataHolder], float]):
 
-        self.root = Node()
+        self.root = Node(feature_type=feature_type)
         self.is_trained = False
         self.max_depth = max_depth
         self.feature_type = feature_type
@@ -260,6 +293,6 @@ class RegressionForest:
         reset: bool = False
             Reset tree
         """
-        for tree in self.trees:
+        for tree in tqdm(self.trees):
             tree.train(data, num_param_samples, reset)
             
