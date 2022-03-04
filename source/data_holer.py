@@ -127,9 +127,9 @@ class DataHolder:
         """
         Returns
         -------
-        The number of SampleHolders in this DataHolder
+        The number of Samples in this DataHolder
         """
-        return len(self.samples)
+        return sum([len(sample_holder) for sample_holder in self.samples])
 
     def __getitem__(self, argument: Union[int, List[np.array]]) -> Union['DataHolder', SampleHolder]:
         """
@@ -146,7 +146,7 @@ class DataHolder:
             SampleHolder
 
         argument == List[np.array]
-            The nested masks to apply to this DataHolder. len(argument) should be == len(self)
+            The nested masks to apply to this DataHolder. len(argument) should be == len(self.samples)
             len(argument[i]) should be == len(self[i])
 
             Returns
@@ -195,7 +195,7 @@ class DataHolder:
             w_s: np.ndarray
                 The target_response data points (3d world coordinates)
         """
-        total_samples = sum([len(sample_holder) for sample_holder in self.samples])
+        total_samples = len(self)
         single_p = self.samples[0].p_s[0]
         single_w = self.samples[0].w_s[0]
 
@@ -213,6 +213,15 @@ class DataHolder:
             idx_total_start = idx_total_end
 
         return (p_s_total, w_s_total)
+
+    def get_features_with_parameters(self, params: any, feature_type: FeatureType) -> np.array:
+        """
+        Nested version of the SampleHolder.get_feature_with_parameters
+        """
+        masks = []
+        for sample_holder in self.samples:
+            masks.append(sample_holder.get_features_with_parameters(params, feature_type))
+        return masks
 
 def sample_from_feature_extractor(feature_extractor: FeatureExtracor, num_samples: int) -> SampleHolder:
     """
