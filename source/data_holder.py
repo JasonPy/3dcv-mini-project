@@ -1,12 +1,12 @@
 from argparse import ArgumentError
-from random import sample
 from typing import Union, Tuple, List
 import numpy as np
+from pathos.multiprocessing import ProcessingPool as Pool
 
-from feature_extractor import FeatureExtracor, FeatureType
+from feature_extractor import FeatureExtractor, FeatureType
 
 class Sample:
-    def __init__(self, feature_extractor: FeatureExtracor, p: np.array, w: np.array):
+    def __init__(self, feature_extractor: FeatureExtractor, p: np.array, w: np.array):
         """
         Simple wrapper holding a simple data point and associated FeatureExtractor
 
@@ -39,7 +39,7 @@ class Sample:
         return self.feature_extractor.get_feature(self.p, params, feature_type)
 
 class SampleHolder:
-    def __init__(self, feature_extractor: FeatureExtracor, p_s: np.array, w_s: np.array):
+    def __init__(self, feature_extractor: FeatureExtractor, p_s: np.array, w_s: np.array):
         """
         A holder, which holds a list of data points sharing the same FeatureExtractor (image)
         
@@ -87,19 +87,16 @@ class SampleHolder:
         arg == np.array
             A SampleHolder with containing only the samples on whose index the mask evaluates to true
         """
+        if isinstance(argument, int):
+            return Sample(self.feature_extractor, self.p_s[argument], self.w_s[argument])
         
-        if isinstance(argument, np.array):
-
-            if argument.shape[0] != len(self.p_s):
+        else:
+            if len(argument) != len(self.p_s):
                 raise ArgumentError(f'Mask of length {argument.shape[0]} cannot be applied to '
-                                    f'SampleHolder of size {len(self.p_s)}')
-
+                                        f'SampleHolder of size {len(self.p_s)}')
             p_s_sliced = self.p_s[argument]
             w_s_sliced = self.w_s[argument]
             return SampleHolder(self.feature_extractor, p_s_sliced, w_s_sliced)
-
-        elif isinstance(argument, int):
-            return Sample(self.feature_extractor, self.p_s[argument], self.w_s[argument])
 
     def is_empty(self):
         return len(self.p_s) == 0
@@ -108,8 +105,13 @@ class SampleHolder:
         """
         Vectorized version of the Sample.get_feature_with_parameters
         """
-        feature_extractor_vec = np.vectorize(self.feature_extractor.get_feature, exclude=['params'])
-        return feature_extractor_vec(self.p_s, params, feature_type)
+        # get_feature = lambda p: self.feature_extractor.get_feature(p, params=params, type=feature_type)
+        # print(len(self.p_s))
+        # with Pool() as p:
+        # return np.array(map(get_feature, self.p_s))
+        return np.array([self.feature_extractor.get_feature(p, params=params, type=feature_type) for p in self.p_s])
+        # feature_extractor_vec = np.vectorize(self.feature_extractor.get_feature, excluded=['params', 'type'], )
+        # return feature_extractor_vec(self.p_s, params=params, type=feature_type)
 
 class DataHolder:
     def __init__(self, samples: List[SampleHolder] = []):
@@ -157,12 +159,12 @@ class DataHolder:
         if isinstance(argument, int):
             return self.samples[argument]
         
-        elif isinstance(argument, np.array):
+        else:
             masks = argument
             if (len(masks) != len(self.samples)):
-                raise ArgumentError('Number of masks does not match number of SampleHolders in DataHolder')
+                raise ArgumentError(None, f'Number of masks {len(masks)} does not match number of SampleHolders {len(self.samples)} in DataHolder')
 
-            data_masked = DataHolder()
+            data_masked = DataHolder([])
             for i in range(len(self.samples)):
                 samples_masked = self.samples[i][masks[i]]
                 if not samples_masked.is_empty():
@@ -196,6 +198,9 @@ class DataHolder:
                 The target_response data points (3d world coordinates)
         """
         total_samples = len(self)
+        if total_samples == 0:
+            return ([], [])
+
         single_p = self.samples[0].p_s[0]
         single_w = self.samples[0].w_s[0]
 
@@ -223,7 +228,7 @@ class DataHolder:
             masks.append(sample_holder.get_features_with_parameters(params, feature_type))
         return masks
 
-def sample_from_feature_extractor(feature_extractor: FeatureExtracor, num_samples: int) -> SampleHolder:
+def sample_from_feature_extractor(feature_extractor: FeatureExtractor, num_samples: int) -> SampleHolder:
     """
     Generate a single SampleHolder containing num_samples samples from the given
     FeatureExtractor
@@ -256,7 +261,7 @@ def sample_from_data_set(images_rgb: np.array, images_depth: np.array, camera_po
     data_holder = DataHolder()
 
     for i in range(images_rgb.shape[0]):
-        feature_extractor = FeatureExtracor(
+        feature_extractor = FeatureExtractor(
             depth_data=images_depth[i],
             rgb_data=images_rgb[i],
             camera_pose=camera_poses[i])
