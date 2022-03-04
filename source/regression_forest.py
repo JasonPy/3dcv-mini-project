@@ -5,7 +5,46 @@ from typing import Tuple
 import numpy as np
 import tqdm
 
-from feature_extractor import FeatureExtracor
+from feature_extractor import FeatureExtractor, FeatureType
+from data_holer import DataHolder, SampleHolder, Sample
+
+def objective_reduction_in_variance (
+    set_complete: DataHolder,
+    set_left: DataHolder,
+    set_right: DataHolder
+    ) -> float:
+    """
+    Tree training objective function. Evaluates the fitness of the split according to the
+    reduction in variance criterium (see 2.4 forest training)
+
+    Parameters
+    ----------
+    set_complete: DataHolder
+        The complete set before the tree node
+    set_left: DataHolder
+        The set, which got split to the left
+    set_right: DataHolder
+        The set, which got split to the right
+    """
+    (p_complete, w_complete) = set_complete.get_all_sample_data_points()
+    (p_left, w_left) = set_left.get_all_sample_data_points()
+    (p_right, w_right) = set_right.get_all_sample_data_points()
+
+    num_samples = len(w_complete)
+    fac_left = len(w_left) / num_samples
+    fac_right = len(w_right) / num_samples
+
+    return np.var(np.linalg.norm(w_complete)) \
+        - fac_left * np.var(np.linalg.norm(w_left, axis=1)) \
+        - fac_right * np.var(np.linalg.norm(w_right, axis=1))
+
+
+"""
+TOOD: Idea (by Vincenco):
+
+Use "pre pruning" on the tree. Maybe use shannon entropy in objective function
+to access the information gain at a node given a certain parameter set
+"""
 
 class Node:
     # TODO: Think about this! Might want to decouple feature function from image data after all?
