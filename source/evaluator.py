@@ -1,6 +1,6 @@
 import numpy as np
 
-# TODO: make sure to provide the 3D points of the following form: np.array([[1,2,3],[1,2,3], ...])
+# TODO: make sure to provide the 3D poses in an numpy array with 4x4 matrices np.array([[4x4], [4x4], ...])
 
 
 class Evaluator:
@@ -31,9 +31,9 @@ class Evaluator:
         Parameters
         ----------
         poses: np.array
-            the poses predicted by some algorithm as 3D world coordinates
+            the poses predicted by some algorithm as 4x4 matrices
         ground_truth: np.array
-            the true poses as 3D world coordinates
+            the true poses as 4x4 matrices
 
         Returns
         -------
@@ -43,8 +43,6 @@ class Evaluator:
 
         error_angular = self.get_angular_error(poses, ground_truth)
         error_translational = self.get_translational_error(poses, ground_truth)
-
-        print(error_angular)
 
         # check which of the values are below the corresponding threshold
         inliers_angular = error_angular <= self.angular_error_threshold
@@ -60,29 +58,33 @@ class Evaluator:
 
     def get_angular_error(self, poses: np.array, ground_truth: np.array) -> np.array:
         """
-        Calculate the angle between two sets of 3D points.
+        Calculate the angle between two sets of poses.
 
         Parameters
         ----------
         poses: np.array
-            the poses predicted by some algorithm as 3D world coordinates
+            the poses predicted by some algorithm as an array of 4x4 matrices
         ground_truth: np.array
-            the true poses as 3D world coordinates
+            the true poses as an array of 4x4 matrices
 
         Returns
         -------
         angular_error: np.array
-            angular error between corresponding 3D world points
+            angular error between corresponding poses and ground truth
         """
 
-        # calculate the dot product and normalize by their length 
-        dot_product = np.sum(poses * ground_truth, axis=1) / (np.linalg.norm(poses, axis=1) * np.linalg.norm(ground_truth, axis=1))
-        
-        # clip result of dot-product to prevent runtime issues when encountering colinear vectors
-        dot_product = np.clip(dot_product, -1, 1)
+        # obtain the rotation matrices from the pose matrices
+        R_pos = poses[:,:3,:3]
+        R_gt = ground_truth[:,:3,:3]
 
-        # calculate angle between vectors and transform to degrees
-        return np.rad2deg(np.arccos(dot_product))
+        # compute the difference matrix, representing the difference rotation
+        R_diff = np.matmul(np.transpose(R_gt, axes=(0,2,1)), R_pos)
+
+        # get the angle theta of difference rotations
+        theta = (np.trace(R_diff, axis1=1, axis2=2) - 1) / 2
+        angular_error = np.rad2deg(np.arccos(np.clip(theta, -1, 1)))
+
+        return angular_error
 
 
     def get_translational_error(self, poses: np.array, ground_truth: np.array) -> np.array:
@@ -92,13 +94,21 @@ class Evaluator:
         Parameters
         ----------
         poses: np.array
-            the poses predicted by some algorithm as 3D world coordinates
+            the poses predicted by some algorithm as array of 4x4 matrices
         ground_truth: np.array
-            the true poses as 3D world coordinates
+            the true poses as array of 4x4 matrices
 
         Returns
         -------
         translational_error: np.array
-            translational error between corresponding 3D world points
+            translational error between corresponding poses
         """
-        return np.sqrt(np.sum((poses - ground_truth)**2, axis=1))
+
+        # obtain translation vectors from poses
+        T_pos = poses[:,:3,3]
+        T_gt = ground_truth[:,:3,3]
+
+        # calculate translational error
+        translational_error = np.sqrt(np.sum((T_pos - T_gt)**2, axis=1))
+
+        return translational_error
