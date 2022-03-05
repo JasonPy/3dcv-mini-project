@@ -19,12 +19,14 @@ class FeatureExtractor():
     extraction functions.
     """
 
-    def __init__(self, depth_data: np.array, rgb_data: np.array, camera_pose: np.array, depth_fill_value: float = 6000):
+    def __init__(self, index: int, depth_data: np.array, rgb_data: np.array, camera_pose: np.array, depth_fill_value: float = 6000):
         """
         Construct a feature extractor for the given image
 
         Parameters
         ----------
+        index: int
+            the image index
         depth_data: np.array
             the images depth values in millimeters
         rgb_data: np.array
@@ -35,6 +37,7 @@ class FeatureExtractor():
             fill invalid depth values with distance in millimeters
 
         """
+        self.index = index
         self.depth_data = depth_data
         self.rgb_data = rgb_data
         self.camera_pose = camera_pose
