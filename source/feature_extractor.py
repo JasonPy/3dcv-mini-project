@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union
+from typing import Union, Tuple
 import numpy as np
 from utils import is_valid_depth, in_bounds
 
@@ -19,7 +19,7 @@ class FeatureExtractor():
     extraction functions.
     """
 
-    def __init__(self, index: int, depth_data: np.array, rgb_data: np.array, camera_pose: np.array, depth_fill_value: float = 6000):
+    def __init__(self, index: int, image_data: Tuple[np.array, np.array, np.array], depth_fill_value: float = 6000):
         """
         Construct a feature extractor for the given image
 
@@ -27,23 +27,19 @@ class FeatureExtractor():
         ----------
         index: int
             the image index
-        depth_data: np.array
-            the images depth values in millimeters
-        rgb_data: np.array
-            the image as rgb 
-        camera_pose: np.array
-            the image's camera pose expressed as a 4x4 transformation matrix
+        image_data: Tuple[np.array, np.array, np.array]
+            the images data
         depth_fill_value: float
             fill invalid depth values with distance in millimeters
 
         """
         self.index = index
-        self.depth_data = depth_data
-        self.rgb_data = rgb_data
-        self.camera_pose = camera_pose
+        self.rgb_data = image_data[0]
+        self.depth_data = image_data[1]
+        self.camera_pose = image_data[2]
         self.depth_fill_value = depth_fill_value
 
-    def get_feature(self, p: np.array, params: any, type: FeatureType) -> Union[bool, None]:
+    def get_feature(self, p: np.array, params: any, feature_type: FeatureType) -> Union[bool, None]:
         """
         For a given pixel coordinate (sample), evaluate the feature function
         in the context of this feature space (image) according to the given
@@ -83,7 +79,7 @@ class FeatureExtractor():
         p1 = p1.astype(int)
         p2 = p2.astype(int)
 
-        if type is FeatureType.DEPTH:
+        if feature_type is FeatureType.DEPTH:
             if is_valid_depth(self.depth_data, p1) and is_valid_depth(self.depth_data, p2):
                 d1 = depth(p1)
                 d2 = depth(p2)
@@ -91,7 +87,7 @@ class FeatureExtractor():
             else:
                 return False
 
-        elif type is FeatureType.DA_RGB:
+        elif feature_type is FeatureType.DA_RGB:
             if in_bounds(self.depth_data.shape, p1) and in_bounds(self.depth_data.shape, p2):
                 i1 = rgb(p1, c1)
                 i2 = rgb(p2, c2)
@@ -99,7 +95,7 @@ class FeatureExtractor():
             else:
                 return False
 
-        elif type is FeatureType.DA_RGB_DEPTH:
+        elif feature_type is FeatureType.DA_RGB_DEPTH:
             raise NotImplementedError()
 
     def generate_data_samples(self, num_samples: int) -> np.array:

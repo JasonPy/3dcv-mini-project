@@ -53,7 +53,7 @@ class DataLoader:
         data_d = []
         data_pose = []
 
-        for file_path in tqdm(files_to_load):
+        for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data'):
             if file_path.endswith(".color.png"):  
                 # convert image to floating point and scale to [0,1]
                 image = np.array(Image.open(file_path)) 

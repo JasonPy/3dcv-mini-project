@@ -3,9 +3,10 @@ from typing import Tuple, List
 
 import numpy as np
 from tqdm import tqdm
+print = tqdm.write
 
 from feature_extractor import FeatureExtractor, FeatureType
-from data_holder import DataHolder, SampleHolder, Sample
+from data_holder import DataHolder, ProcessingPool, DataHolder
 from utils import millis
 
 def objective_reduction_in_variance (
@@ -73,16 +74,14 @@ class Node:
     def is_leaf(self):
         return (self.left_child is None) and (self.right_child is None)
 
-    def evaluate(self, samples: Tuple[SampleHolder, Sample]) -> List[any]:
+    def evaluate(self, samples: DataHolder):
         """
         Evaluate the tree recursively starting at this node.
 
         Parameters
         ----------
-        samples: SampleHolder
+        samples: DataHolder
             Input samples (pixel coorindates)
-        samples: Sample
-            A single input sample (pixel coordinates)
         
         Returns
         -------
@@ -93,9 +92,6 @@ class Node:
         if self.is_leaf():
             return self.leared_response
 
-        if isinstance(samples, Sample):
-            samples = SampleHolder(samples.feature_extractor, [samples.p], [samples.w])
-
         outputs = samples.get_features_with_parameters(self.params, self.feature_type)
         for output in outputs:
             nextNode = self.right_child if output else self.left_child
@@ -104,6 +100,7 @@ class Node:
     def train(self, 
         depth: int,
         data: DataHolder,
+        processing_pool: ProcessingPool,
         objective_function: Callable[[DataHolder, DataHolder, DataHolder], float],
         param_sampler: Callable[[int], np.array],
         num_param_samples: int,
@@ -178,39 +175,31 @@ class Node:
             self.left_child = Node(self.feature_type, None) if self.left_child == None else self.left_child
             self.right_child = Node(self.feature_type, None) if self.right_child == None else self.right_child
  
-        def calculate_score(param_sample):
-            split_mask = data.get_features_with_parameters(param_sample, self.feature_type)
-            split_mask_inverted = [mask == False for mask in split_mask]
-            set_left = data[split_mask]
-            set_right = data[split_mask_inverted]
-            split_mask = None
-            split_mask_inverted = None
-            return (objective_function(data, set_left, set_right), set_left, set_right)
-
-        then = millis()
+        _ms_start = millis()
 
         param_samples = param_sampler(num_param_samples)
-        # results = []
-        # if (len(data) > 20):
-        #     print(len(data))
-        #     with Pool() as p:
-        #         results = p.map(calculate_score, param_samples, chunksize=200)
-        # else:
-        results = map(calculate_score, param_samples)
+        masks = data.get_features_with_parameters(
+            processing_pool = processing_pool,
+            param_samples = param_samples,
+            feature_type = self.feature_type)
 
-        for param_sample, result in zip(param_samples, results):
-            score, set_left, set_right = result
+        _delta_get_features = millis() - _ms_start
+
+        for param_sample, mask in zip(param_samples, masks):
+            set_left = data[mask]
+            set_right = data[mask == False]
+            score = objective_function(set_complete = data, set_left = set_left, set_right = set_right)
             if score > self.best_score:
                 self.best_score = score
                 self.params = param_sample
                 self.best_set_left = set_left
                 self.best_set_right = set_right
 
-        results = None
-
-        delta = millis() - then
-        evaluations = len(data) * num_param_samples
-        print(f'Training with {(evaluations / delta):3.3F}Kev/s {("-" * (depth + 1))}')
+        _delta_split_and_score = millis() - _delta_get_features - _ms_start
+        _str_features = f'{len(data) * num_param_samples:20} samples evaluated in {_delta_get_features:8.0F}ms'
+        _str_split = f'Split {len(data):10} into {len(self.best_set_left):10} and {len(self.best_set_right):10} in {_delta_split_and_score:8.0F}ms'
+        kilo_it_per_sec_str = f'{(len(data) * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
+        print(f'Node trained: {_str_split} | {_str_features} ------> {kilo_it_per_sec_str:6}Kit/s {("-" * (depth + 1))}')
 
         if len(self.best_set_left) == 0:
             self.left_child = None
@@ -221,10 +210,24 @@ class Node:
             self.right_child = None
             self.leared_response = np.mean(self.best_set_left.get_all_sample_data_points()[1], axis=0)
         else:
-            self.left_child.train(depth + 1, self.best_set_left, objective_function,
-                                param_sampler, num_param_samples, max_depth)
-            self.right_child.train(depth + 1, self.best_set_right, objective_function,
-                                param_sampler, num_param_samples, max_depth)                
+            self.left_child.train(
+                depth = depth + 1,
+                data = self.best_set_left,
+                processing_pool = processing_pool,
+                objective_function = objective_function,
+                param_sampler = param_sampler,
+                num_param_samples = num_param_samples,
+                max_depth = max_depth,
+                reset = reset)
+            self.right_child.train(
+                depth = depth + 1,
+                data = self.best_set_right,
+                processing_pool = processing_pool,
+                objective_function = objective_function,
+                param_sampler = param_sampler,
+                num_param_samples = num_param_samples,
+                max_depth = max_depth,
+                reset = reset)      
 
 class RegressionTree:
     def __init__(self,
@@ -240,12 +243,12 @@ class RegressionTree:
         self.param_sampler = param_sampler
         self.objective_function = objective_function
 
-    def evaulate(self, samples: Tuple[SampleHolder, Sample]) -> List[any]:
+    def evaulate(self, samples: DataHolder):
         if not self.is_trained:
             raise Exception('Error: Tree is not trained yet!')
         return self.root.evaluate(samples)
 
-    def train(self, data: DataHolder, num_param_samples: int, reset: bool = False):
+    def train(self, data: DataHolder, processing_pool: ProcessingPool, num_param_samples: int, reset: bool = False):
         """
         Train this tree with the list of FeatureExtractors (images) given.
         
@@ -262,6 +265,7 @@ class RegressionTree:
         self.root.train(
             depth = 0,
             data = data,
+            processing_pool = processing_pool,
             objective_function = self.objective_function,
             param_sampler = self.param_sampler,
             num_param_samples = num_param_samples,
@@ -280,7 +284,7 @@ class RegressionForest:
         self.is_trained = False
         self.trees = [RegressionTree(max_depth, feature_type, param_sampler, objective_function) for _ in range(num_trees)]
 
-    def train(self, data: DataHolder, num_param_samples: int, reset: bool = False):
+    def train(self, data: DataHolder, processing_pool: ProcessingPool, num_param_samples: int, reset: bool = False):
         """
         Train this forest with the list of FeatureExtractors (images) given.
 
@@ -293,6 +297,6 @@ class RegressionForest:
         reset: bool = False
             Reset tree
         """
-        for tree in tqdm(self.trees):
-            tree.train(data, num_param_samples, reset)
+        for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
+            tree.train(data, processing_pool, num_param_samples, reset)
             
