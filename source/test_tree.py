@@ -14,11 +14,11 @@ def save_object(obj, filename):
         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
 
 loader = DataLoader('../data')
-images_data = loader.load_dataset('heads', (0, 5))
+images_data = loader.load_dataset('heads', (0, 500))
 
 data = sample_from_data_set(
     images_data = images_data,
-    num_samples = 500)
+    num_samples = 5000)
 
 processing_pool = ProcessingPool(images_data = images_data)
 
@@ -46,7 +46,8 @@ forest.train(
     num_param_samples = 128,
     reset = False)
 
-save_object(forest, 'trained_forest.pkl')
+filename = 'trained_forest.pkl'
+save_object(forest, filename)
 processing_pool.stop_workers()
 
-print('Done training')
+print(f'Done training. Saved as {filename}')

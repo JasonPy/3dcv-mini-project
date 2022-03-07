@@ -96,7 +96,7 @@ class ProcessingPool:
             self.queue_work.put((i, work_data))
 
         results = [0] * len(i_s)
-        for _ in tqdm(i_s, delay = 2, ascii = True, desc = f'Training node  '):
+        for _ in tqdm(i_s, delay = 2, ascii = True, leave = False, desc = f'Training node  '):
             i, result = self.queue_result.get()
             results[i] = result
         return results

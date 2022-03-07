@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 print = tqdm.write
 
-from feature_extractor import FeatureExtractor, FeatureType
+from feature_extractor import FeatureType
 from data_holder import DataHolder, ProcessingPool, DataHolder
 from utils import millis
 
@@ -106,6 +106,7 @@ class Node:
         num_param_samples: int,
         max_depth: int,
         _tqdm: tqdm,
+        label: str = '',
         reset: bool = False
         ) -> None:
         """
@@ -154,7 +155,6 @@ class Node:
             np.array of the paramters
 
         """
-
         if reset:
             self.best_score = -np.inf
             self.leared_response = None
@@ -166,7 +166,6 @@ class Node:
             return
 
         is_leaf_node = False
-
         if depth == max_depth or _len_data == 1:
             # This should be a leaf node
             # We need to find the "mode"
@@ -206,10 +205,10 @@ class Node:
             _len_right = len(self.best_set_right)
 
             _delta_split_and_score = millis() - _delta_get_features - _ms_start
-            _str_features = f'{_len_data * num_param_samples:20} samples evaluated in {_delta_get_features:8.0F}ms'
-            _str_split = f'Split {_len_data:10} into {_len_left:10} and {_len_right:10} in {_delta_split_and_score:8.0F}ms'
+            _str_split = f'| {_len_data:10} in | {_len_left:8} left | {_len_right:8} right | {_delta_split_and_score:4.0F}ms split |'
+            _str_features = f'{_len_data * num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
             kilo_it_per_sec_str = f'{(_len_data * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
-            print(f'Node trained: {_str_split} | {_str_features} ------> {kilo_it_per_sec_str:6}Kit/s {("-" * (depth + 1))}')
+            print(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:6}Kit/s | {label:16} id |')
 
             if _len_left == 0:
                 self.left_child = None
@@ -231,6 +230,7 @@ class Node:
                     num_param_samples = num_param_samples,
                     max_depth = max_depth,
                     _tqdm = _tqdm,
+                    label = f'{label}0',
                     reset = reset)
                 self.right_child.train(
                     depth = depth + 1,
@@ -241,10 +241,10 @@ class Node:
                     num_param_samples = num_param_samples,
                     max_depth = max_depth,
                     _tqdm = _tqdm,
+                    label = f'{label}1',
                     reset = reset)
 
         if is_leaf_node:
-            print(f'Leaf node created at depth {depth}')
             _tqdm.update(_len_data * (max_depth - depth - 1))
 
 class RegressionTree:
