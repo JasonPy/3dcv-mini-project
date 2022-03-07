@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import Tuple, List
 
 import numpy as np
 from tqdm import tqdm
@@ -64,8 +63,6 @@ class Node:
         
         self.params = initial_params
         self.best_score = -np.inf
-        self.best_set_right = None
-        self.best_set_left = None
         self.leared_response = None
         
         self.left_child = None
@@ -89,6 +86,7 @@ class Node:
             The response at the leaf node. Evaluated recursively
 
         """
+        # TODO: Rework
         if self.is_leaf():
             return self.leared_response
 
@@ -190,40 +188,54 @@ class Node:
 
             _delta_get_features = millis() - _ms_start
 
+            best_set_left = None
+            best_set_right = None
+            best_data_valid = None
+            best_len_invalid = 0
             for param_sample, mask in zip(param_samples, masks):
-                set_left = data[mask]
-                set_right = data[mask == False]
-                score = objective_function(set_complete = data, set_left = set_left, set_right = set_right)
+                mask_valid, mask_split = mask
+                data_valid = data[mask_valid]
+
+                set_left = data_valid[mask_split]
+                set_right = data_valid[mask_split == False]
+                score = objective_function(set_complete = data_valid, set_left = set_left, set_right = set_right)
                 if score > self.best_score:
                     self.best_score = score
                     self.params = param_sample
-                    self.best_set_left = set_left
-                    self.best_set_right = set_right
+                    best_data_valid = data_valid
+                    best_len_invalid = sum(mask_valid == False)
+                    best_set_left = set_left
+                    best_set_right = set_right
 
             _tqdm.update(_len_data)
-            _len_left = len(self.best_set_left)
-            _len_right = len(self.best_set_right)
+            _len_left = len(best_set_left)
+            _len_right = len(best_set_right)
 
             _delta_split_and_score = millis() - _delta_get_features - _ms_start
-            _str_split = f'| {_len_data:10} in | {_len_left:8} left | {_len_right:8} right | {_delta_split_and_score:4.0F}ms split |'
+            _str_split = f'| {_len_data:10} in | {best_len_invalid:8} inval | {_len_left:8} left | {_len_right:8} right | {_delta_split_and_score:4.0F}ms split |'
             _str_features = f'{_len_data * num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
             kilo_it_per_sec_str = f'{(_len_data * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
             print(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:6}Kit/s | {label:16} id |')
 
-            if _len_left == 0:
+            if best_len_invalid == _len_data:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = np.mean(self.best_set_right.get_all_sample_data_points()[1], axis=0)
+                self.leared_response = np.mean(best_data_valid.get_all_sample_data_points()[1], axis=0)
+                is_leaf_node = True
+            elif _len_left == 0:
+                self.left_child = None
+                self.right_child = None
+                self.leared_response = np.mean(best_set_right.get_all_sample_data_points()[1], axis=0)
                 is_leaf_node = True
             elif _len_right == 0:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = np.mean(self.best_set_left.get_all_sample_data_points()[1], axis=0)
+                self.leared_response = np.mean(best_set_left.get_all_sample_data_points()[1], axis=0)
                 is_leaf_node = True
             else:
                 self.left_child.train(
                     depth = depth + 1,
-                    data = self.best_set_left,
+                    data = best_set_left,
                     processing_pool = processing_pool,
                     objective_function = objective_function,
                     param_sampler = param_sampler,
@@ -234,7 +246,7 @@ class Node:
                     reset = reset)
                 self.right_child.train(
                     depth = depth + 1,
-                    data = self.best_set_right,
+                    data = best_set_right,
                     processing_pool = processing_pool,
                     objective_function = objective_function,
                     param_sampler = param_sampler,
@@ -243,6 +255,8 @@ class Node:
                     _tqdm = _tqdm,
                     label = f'{label}1',
                     reset = reset)
+
+                _tqdm.update(best_len_invalid * (max_depth - depth - 1))
 
         if is_leaf_node:
             _tqdm.update(_len_data * (max_depth - depth - 1))

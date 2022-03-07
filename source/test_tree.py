@@ -20,16 +20,16 @@ data = sample_from_data_set(
     images_data = images_data,
     num_samples = 5000)
 
-processing_pool = ProcessingPool(images_data = images_data)
-
 def param_sampler(num_samples: int) -> np.array:
     rgb_coords = np.array([0, 1, 2])
     tau = np.tile([0], num_samples)
-    delta1 = uniform(-130, 130, num_samples)
-    delta2 = uniform(-130, 130, num_samples)
+    delta1x = uniform(-130 * 100, 130 * 100, num_samples)
+    delta1y = uniform(-130 * 100, 130 * 100, num_samples)
+    delta2x = uniform(-130 * 100, 130 * 100, num_samples)
+    delta2y = uniform(-130 * 100, 130 * 100, num_samples)
     c1 = choice(rgb_coords, num_samples, replace=True)
     c2 = choice(rgb_coords, num_samples, replace=True)
-    return np.array([tau, delta1, delta2, c1, c2]).transpose()
+    return np.array([tau, delta1x, delta1y, delta2x, delta2y, c1, c2]).transpose()
 
 forest = RegressionForest(
     num_trees = 1,
@@ -38,16 +38,24 @@ forest = RegressionForest(
     param_sampler = param_sampler,
     objective_function = objective_reduction_in_variance)
 
-print(f'Training forest with {len(data)} samples')
+try:
+    processing_pool = ProcessingPool(images_data = images_data)
+    images_data = None
 
-forest.train(
-    data = data,
-    processing_pool = processing_pool,
-    num_param_samples = 128,
-    reset = False)
 
-filename = 'trained_forest.pkl'
-save_object(forest, filename)
-processing_pool.stop_workers()
+    print(f'Training forest with {len(data)} samples')
+    forest.train(
+        data = data,
+        processing_pool = processing_pool,
+        num_param_samples = 128,
+        reset = False)
 
-print(f'Done training. Saved as {filename}')
+    filename = 'trained_forest.pkl'
+    save_object(forest, filename)
+
+    print(f'Done training. Saved as {filename}')
+except KeyboardInterrupt:
+    print(f'Stopping training due to KeyboardInterrupt')
+    pass
+finally:
+    processing_pool.stop_workers()

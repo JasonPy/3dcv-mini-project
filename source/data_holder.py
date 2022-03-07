@@ -4,6 +4,7 @@ import numpy as np
 from multiprocessing import Process, cpu_count, shared_memory, Queue
 
 from feature_extractor import FeatureExtractor, FeatureType
+from utils import get_arrays_size_MB
 
 def init_shared_array(array: np.ndarray):
     shm = shared_memory.SharedMemory(create=True, size=array.nbytes)
@@ -45,8 +46,7 @@ def load_shared_memory(metadata):
 
 def pool_worker(queue_work: Queue, queue_result: Queue, shm_meta: Tuple):
     images_data, close_shm = load_shared_memory(shm_meta)
-    (images_rgb, images_depth, images_pose) = images_data
-    feature_extractors = dict()
+    feature_extractor = FeatureExtractor(images_data)
 
     while True:
         try:
@@ -54,23 +54,21 @@ def pool_worker(queue_work: Queue, queue_result: Queue, shm_meta: Tuple):
             if (index == -1):
                 break
             (idx_s, p_s, param_sample, feature_type) = work_data
-            output = np.ndarray((len(idx_s)), dtype=bool)
-
-            for n in range(len(idx_s)):
-                i = idx_s[n]
-                if i not in feature_extractors:
-                    feature_extractors[i] = FeatureExtractor(index = i, image_data = (images_rgb[i], images_depth[i], images_pose[i]))
-                output[n] = feature_extractors[i].get_feature(p_s[n], param_sample, feature_type)
-
+            output = feature_extractor.get_features_for_samples(idx_s, p_s, param_sample, feature_type)
             queue_result.put((index, output))
 
         except Exception as e:
+            print(f'Uncaught error in pool_worker: {e}')
+            print(e.with_traceback())
+            break
+        except KeyboardInterrupt:
             break
     close_shm()
 
 class ProcessingPool:
     def __init__(self, images_data: Tuple[np.array, np.array, np.array], num_workers: int = cpu_count()):
         self.shm_meta, self.close_shm = init_shared_memory(images_data)
+        print(f'Initialized shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
 
         self.queue_work = Queue()
         self.queue_result = Queue()
@@ -87,16 +85,20 @@ class ProcessingPool:
             self.queue_work.put((-1, None))
         for w in self.workers:
             w.join()
+        print(f'All processing workers exited')
         self.close_shm()
+        print(f'Shared memory pool freed')
+        self.queue_work.close()
+        self.queue_work.cancel_join_thread()
 
     def get_features_for_param_sample(self, idx_s: np.array, p_s: np.array, param_samples: np.array, feature_type: FeatureType):
         i_s = range(len(param_samples))
-        for i, param_sample in zip(i_s, param_samples):
-            work_data = (idx_s, p_s, param_sample, feature_type)
+        for i in i_s:
+            work_data = (idx_s, p_s, param_samples[i], feature_type)
             self.queue_work.put((i, work_data))
 
         results = [0] * len(i_s)
-        for _ in tqdm(i_s, delay = 2, ascii = True, leave = False, desc = f'Training node  '):
+        for _ in tqdm(i_s, delay = 1, ascii = True, leave = False, desc = f'Training node  '):
             i, result = self.queue_result.get()
             results[i] = result
         return results
@@ -210,12 +212,11 @@ def sample_from_data_set(images_data: Tuple[np.array, np.array, np.array], num_s
         The number of samples to draw from each image
     """
     data_holder = DataHolder()
+    feature_extractor = FeatureExtractor(images_data)
 
-    for i in range(images_data[0].shape[0]):
-        image_data = (images_data[0][i], images_data[1][i], images_data[2][i])
-        feature_extractor = FeatureExtractor(index = i, image_data = image_data)
-        (p_s, w_s) = feature_extractor.generate_data_samples(num_samples)
-        idx_s = np.full(p_s.shape[0], i, dtype=int)
+    for i in tqdm(range(images_data[0].shape[0]), ascii = True, desc = 'Generating samples'):
+        (p_s, w_s) = feature_extractor.generate_data_samples(i, num_samples)
+        idx_s = np.full(p_s.shape[0], i, dtype=np.uint16)
         data_holder.add_samples(idx_s = idx_s, p_s = p_s, w_s = w_s)
 
     return data_holder

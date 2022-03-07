@@ -55,10 +55,7 @@ class DataLoader:
 
         for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data'):
             if file_path.endswith(".color.png"):  
-                # convert image to floating point and scale to [0,1]
-                image = np.array(Image.open(file_path)) 
-                image = image.astype('float32')
-                image /= 2**8 - 1
+                image = np.array(Image.open(file_path))
                 data_rgb.append(image)
 
             if file_path.endswith(".depth.png"):
