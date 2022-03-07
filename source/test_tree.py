@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 from numpy.random import choice, uniform
 
@@ -7,12 +9,16 @@ from data_loader import DataLoader
 from regression_forest import RegressionForest, objective_reduction_in_variance
 from feature_extractor import FeatureType
 
+def save_object(obj, filename):
+    with open(filename, 'wb') as outp:  # Overwrites any existing file.
+        pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
+
 loader = DataLoader('../data')
 images_data = loader.load_dataset('heads', (0, 5))
 
 data = sample_from_data_set(
     images_data = images_data,
-    num_samples = 5000)
+    num_samples = 500)
 
 processing_pool = ProcessingPool(images_data = images_data)
 
@@ -26,7 +32,7 @@ def param_sampler(num_samples: int) -> np.array:
     return np.array([tau, delta1, delta2, c1, c2]).transpose()
 
 forest = RegressionForest(
-    num_trees = 5,
+    num_trees = 1,
     max_depth = 16,
     feature_type = FeatureType.DA_RGB,
     param_sampler = param_sampler,
@@ -39,5 +45,8 @@ forest.train(
     processing_pool = processing_pool,
     num_param_samples = 128,
     reset = False)
+
+save_object(forest, 'trained_forest.pkl')
+processing_pool.stop_workers()
 
 print('Done training')

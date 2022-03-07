@@ -105,6 +105,7 @@ class Node:
         param_sampler: Callable[[int], np.array],
         num_param_samples: int,
         max_depth: int,
+        _tqdm: tqdm,
         reset: bool = False
         ) -> None:
         """
@@ -160,74 +161,91 @@ class Node:
             self.left_child = None
             self.right_child = None
 
-        if len(data) == 0:
+        _len_data = len(data)
+        if _len_data == 0:
             return
 
-        if depth == max_depth or len(data) == 1:
+        is_leaf_node = False
+
+        if depth == max_depth or _len_data == 1:
             # This should be a leaf node
             # We need to find the "mode"
+            is_leaf_node = True
+            _tqdm.update(_len_data)
             (_, w_s) = data.get_all_sample_data_points()
             self.leared_response = np.mean(w_s, axis=0)
             self.left_child = None
             self.right_child = None
-            return
         else:
             self.left_child = Node(self.feature_type, None) if self.left_child == None else self.left_child
             self.right_child = Node(self.feature_type, None) if self.right_child == None else self.right_child
  
-        _ms_start = millis()
+        if not is_leaf_node:
+            _ms_start = millis()
 
-        param_samples = param_sampler(num_param_samples)
-        masks = data.get_features_with_parameters(
-            processing_pool = processing_pool,
-            param_samples = param_samples,
-            feature_type = self.feature_type)
-
-        _delta_get_features = millis() - _ms_start
-
-        for param_sample, mask in zip(param_samples, masks):
-            set_left = data[mask]
-            set_right = data[mask == False]
-            score = objective_function(set_complete = data, set_left = set_left, set_right = set_right)
-            if score > self.best_score:
-                self.best_score = score
-                self.params = param_sample
-                self.best_set_left = set_left
-                self.best_set_right = set_right
-
-        _delta_split_and_score = millis() - _delta_get_features - _ms_start
-        _str_features = f'{len(data) * num_param_samples:20} samples evaluated in {_delta_get_features:8.0F}ms'
-        _str_split = f'Split {len(data):10} into {len(self.best_set_left):10} and {len(self.best_set_right):10} in {_delta_split_and_score:8.0F}ms'
-        kilo_it_per_sec_str = f'{(len(data) * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
-        print(f'Node trained: {_str_split} | {_str_features} ------> {kilo_it_per_sec_str:6}Kit/s {("-" * (depth + 1))}')
-
-        if len(self.best_set_left) == 0:
-            self.left_child = None
-            self.right_child = None
-            self.leared_response = np.mean(self.best_set_right.get_all_sample_data_points()[1], axis=0)
-        elif len(self.best_set_right) == 0:
-            self.left_child = None
-            self.right_child = None
-            self.leared_response = np.mean(self.best_set_left.get_all_sample_data_points()[1], axis=0)
-        else:
-            self.left_child.train(
-                depth = depth + 1,
-                data = self.best_set_left,
+            param_samples = param_sampler(num_param_samples)
+            masks = data.get_features_with_parameters(
                 processing_pool = processing_pool,
-                objective_function = objective_function,
-                param_sampler = param_sampler,
-                num_param_samples = num_param_samples,
-                max_depth = max_depth,
-                reset = reset)
-            self.right_child.train(
-                depth = depth + 1,
-                data = self.best_set_right,
-                processing_pool = processing_pool,
-                objective_function = objective_function,
-                param_sampler = param_sampler,
-                num_param_samples = num_param_samples,
-                max_depth = max_depth,
-                reset = reset)      
+                param_samples = param_samples,
+                feature_type = self.feature_type)
+
+            _delta_get_features = millis() - _ms_start
+
+            for param_sample, mask in zip(param_samples, masks):
+                set_left = data[mask]
+                set_right = data[mask == False]
+                score = objective_function(set_complete = data, set_left = set_left, set_right = set_right)
+                if score > self.best_score:
+                    self.best_score = score
+                    self.params = param_sample
+                    self.best_set_left = set_left
+                    self.best_set_right = set_right
+
+            _tqdm.update(_len_data)
+            _len_left = len(self.best_set_left)
+            _len_right = len(self.best_set_right)
+
+            _delta_split_and_score = millis() - _delta_get_features - _ms_start
+            _str_features = f'{_len_data * num_param_samples:20} samples evaluated in {_delta_get_features:8.0F}ms'
+            _str_split = f'Split {_len_data:10} into {_len_left:10} and {_len_right:10} in {_delta_split_and_score:8.0F}ms'
+            kilo_it_per_sec_str = f'{(_len_data * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
+            print(f'Node trained: {_str_split} | {_str_features} ------> {kilo_it_per_sec_str:6}Kit/s {("-" * (depth + 1))}')
+
+            if _len_left == 0:
+                self.left_child = None
+                self.right_child = None
+                self.leared_response = np.mean(self.best_set_right.get_all_sample_data_points()[1], axis=0)
+                is_leaf_node = True
+            elif _len_right == 0:
+                self.left_child = None
+                self.right_child = None
+                self.leared_response = np.mean(self.best_set_left.get_all_sample_data_points()[1], axis=0)
+                is_leaf_node = True
+            else:
+                self.left_child.train(
+                    depth = depth + 1,
+                    data = self.best_set_left,
+                    processing_pool = processing_pool,
+                    objective_function = objective_function,
+                    param_sampler = param_sampler,
+                    num_param_samples = num_param_samples,
+                    max_depth = max_depth,
+                    _tqdm = _tqdm,
+                    reset = reset)
+                self.right_child.train(
+                    depth = depth + 1,
+                    data = self.best_set_right,
+                    processing_pool = processing_pool,
+                    objective_function = objective_function,
+                    param_sampler = param_sampler,
+                    num_param_samples = num_param_samples,
+                    max_depth = max_depth,
+                    _tqdm = _tqdm,
+                    reset = reset)
+
+        if is_leaf_node:
+            print(f'Leaf node created at depth {depth}')
+            _tqdm.update(_len_data * (max_depth - depth - 1))
 
 class RegressionTree:
     def __init__(self,
@@ -262,6 +280,13 @@ class RegressionTree:
             Reset tree
         """
         
+        _tqdm = tqdm(
+            iterable = None,
+            desc = 'Training tree  ',
+            total = len(data) * self.max_depth,
+            ascii = True
+        )
+
         self.root.train(
             depth = 0,
             data = data,
@@ -270,6 +295,7 @@ class RegressionTree:
             param_sampler = self.param_sampler,
             num_param_samples = num_param_samples,
             max_depth = self.max_depth,
+            _tqdm = _tqdm,
             reset = reset)
             
         self.is_trained = True
