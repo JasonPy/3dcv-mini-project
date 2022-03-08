@@ -1,10 +1,10 @@
-from operator import index
 import os
 from typing import Tuple
 
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
+from feature_extractor import generate_data_samples
 
 SCENES = ["chess", "fire", "heads", "office", "pumpkin", "redkitchen", "stairs"]
 
@@ -67,3 +67,26 @@ class DataLoader:
                 data_pose.append(pose)
 
         return np.array(data_rgb), np.array(data_d), np.array(data_pose)
+
+    def sample_from_data_set(self, images_data: Tuple[np.array, np.array, np.array], num_samples: int) -> Tuple[np.array, np.array]:
+        """
+        Samples the specified number of samples from each of the provided images.
+        
+        Parameters
+        ----------
+        images_data: Tuple[np.array, np.array, np.array]
+            The image data
+        num_samples: int
+            The number of samples to draw from each image
+        """
+        num_images = images_data[0].shape[0]
+        p_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.int16)
+        w_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.float32)
+
+        for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples'):
+            (p_s, w_s) = generate_data_samples(images_data, i, num_samples)
+            
+            p_s_tot[i*num_samples:(i+1)*num_samples] = p_s
+            w_s_tot[i*num_samples:(i+1)*num_samples] = w_s
+
+        return p_s_tot, w_s_tot

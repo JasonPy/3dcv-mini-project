@@ -27,6 +27,7 @@ nbconvert
 nbformat
 networkx
 notebook
+numba
 numpy
 pandocfilters
 parso
