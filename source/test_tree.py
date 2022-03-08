@@ -40,7 +40,8 @@ forest.train(
     images_data = images_data,
     data = data,
     num_param_samples = 1024,
-    reset = False)
+    reset = False,
+    num_workers = 8)
 
 filename = 'trained_forest.pkl'
 save_object(forest, filename)

@@ -41,20 +41,13 @@ def objective_reduction_in_variance (
 
     return vector_3d_array_variance(w_complete) - fac_left * var_left - fac_right * var_right
 
-
 @njit
-def regression_tree_worker(image_data, p_s, w_s, param_sample, objective_function, feature_type):
-    mask_valid, mask_split = get_features_for_samples(
-        image_data = image_data,
-        p_s = p_s,
-        param_sample = param_sample,
-        feature_type = feature_type)
-    
+def regression_tree_worker_score(image_data, p_s, w_s, param_sample, objective_function, feature_type):
+    mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_sample, feature_type)
     w_s_valid = w_s[mask_valid]
     set_left, set_right = split_set(w_s_valid, mask_split)
-
     score = objective_function(w_complete = w_s_valid, w_left = set_left, w_right = set_right)
-    return (mask_valid, mask_split, score)
+    return score
 
 """
 TOOD: Idea (by Vincenco):
@@ -201,11 +194,11 @@ class Node:
             param_samples = param_sampler(num_param_samples)
             results = []
 
-            if (_len_data < 600):
+            if (_len_data < 350) or False:
                 image_data, close_shm = processing_pool.get_image_data()
                 objective_function, feature_type = processing_pool.get_worker_params()
                 for param_sample in param_samples:
-                    results.append(regression_tree_worker(
+                    results.append(regression_tree_worker_score(
                         image_data = image_data,
                         p_s = p_s,
                         w_s = w_s,
@@ -213,6 +206,7 @@ class Node:
                         objective_function = objective_function,
                         feature_type = feature_type
                     ))
+                image_data = None
                 close_shm()
             else:
                 work_datas = [(p_s, w_s, param_sample) for param_sample in param_samples]
@@ -220,11 +214,17 @@ class Node:
 
             _delta_get_features = millis() - _ms_start
 
-            index_best_sample = np.argmax(np.array([score for (_, __, score) in results]))
-            mask_valid, mask_split, score = results[index_best_sample]
-
+            index_best_sample = np.argmax(results)
+            score = results[index_best_sample]
             self.params = param_samples[index_best_sample]
             self.best_score = score
+
+            image_data, close_shm = processing_pool.get_image_data()
+            objective_function, feature_type = processing_pool.get_worker_params()
+            mask_valid, mask_split = get_features_for_samples(image_data, p_s, self.params, feature_type)
+            image_data = None
+            close_shm()
+
             best_len_invalid = sum(~mask_valid)
             best_p_s_valid = p_s[mask_valid]
             best_w_s_valid = w_s[mask_valid]
@@ -327,7 +327,7 @@ class RegressionTree:
         processing_pool = ProcessingPool(
             images_data = images_data,
             num_workers = num_workers,
-            worker_function = regression_tree_worker,
+            worker_function = regression_tree_worker_score,
             worker_params = (self.objective_function, self.feature_type))
         
         try:

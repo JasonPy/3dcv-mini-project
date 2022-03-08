@@ -61,7 +61,7 @@ def pool_worker(
             result = worker_function(images_data, *work_data, *worker_params)
             queue_result.put((index, result))
         except Exception as e:
-            print(f'Uncaught error in pool_worker!: ', e)
+            print(f'Uncaught error in pool_worker!: {e}')
             break
         except KeyboardInterrupt:
             break
