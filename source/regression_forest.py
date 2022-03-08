@@ -4,12 +4,25 @@ from typing import Tuple
 
 from numba import njit
 import numpy as np
+from numpy.random import choice, uniform
 from tqdm import tqdm
 write = tqdm.write
 
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
 from utils import millis, vector_3d_array_mean, vector_3d_array_variance, split_set
+
+@njit
+def param_sampler(num_samples: int) -> np.array:
+    rgb_coords = np.array([0, 1, 2])
+    tau = np.zeros(num_samples)
+    delta1x = uniform(-130 * 100, 130 * 100, num_samples)
+    delta1y = uniform(-130 * 100, 130 * 100, num_samples)
+    delta2x = uniform(-130 * 100, 130 * 100, num_samples)
+    delta2y = uniform(-130 * 100, 130 * 100, num_samples)
+    c1 = choice(rgb_coords, num_samples, replace=True)
+    c2 = choice(rgb_coords, num_samples, replace=True)
+    return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T
 
 @njit
 def objective_reduction_in_variance (
@@ -81,7 +94,7 @@ class Node:
     def is_leaf(self):
         return (self.left_child is None) and (self.right_child is None)
 
-    def evaluate(self, samples: np.array):
+    def evaluate(self, samples: np.array, feature_type: FeatureType, processing_pool: ProcessingPool):
         """
         Evaluate the tree recursively starting at this node.
 
@@ -96,16 +109,27 @@ class Node:
             The response at the leaf node. Evaluated recursively
 
         """
-        # TODO: Rework
+        if (len(samples) == 0):
+            return samples
 
-
-        # if self.is_leaf():
-        #     return self.leared_response
-
-        # outputs = samples.get_features_with_parameters(self.params, self.feature_type)
-        # for output in outputs:
-        #     nextNode = self.right_child if output else self.left_child
-        #     return nextNode.evaulate(samples)
+        if self.is_leaf():
+            return np.full((len(samples), self.leared_response.shape[0]), self.leared_response)
+        else:
+            outputs = np.full((len(samples), 3), -np.inf)
+            image_data, close_shm = processing_pool.get_image_data()
+            mask_valid, mask_split = get_features_for_samples(image_data, samples, self.params, feature_type)
+            close_shm()
+            image_data = None
+            samples_valid, _ = split_set(samples, mask_valid)
+            split_left, split_right = split_set(samples_valid, mask_split)
+            
+            response_left = self.left_child.evaluate(split_left, feature_type, processing_pool)
+            response_right = self.right_child.evaluate(split_right, feature_type, processing_pool)
+            outputs_masked = outputs[mask_valid].copy()
+            outputs_masked[mask_split] = response_left
+            outputs_masked[~mask_split] = response_right
+            outputs[mask_valid] = outputs_masked
+            return outputs
 
     def train(self, 
         depth: int,
@@ -226,8 +250,9 @@ class Node:
             close_shm()
 
             best_len_invalid = sum(~mask_valid)
-            best_p_s_valid = p_s[mask_valid]
-            best_w_s_valid = w_s[mask_valid]
+
+            best_p_s_valid, _ = split_set(p_s, mask_valid)
+            best_w_s_valid, _ = split_set(w_s, mask_valid)
             best_p_s_left, best_p_s_right = split_set(best_p_s_valid, mask_split)
             best_w_s_left, best_w_s_right = split_set(best_w_s_valid, mask_split)
 
@@ -300,10 +325,14 @@ class RegressionTree:
         self.param_sampler = param_sampler
         self.objective_function = objective_function
 
-    def evaulate(self, samples: np.array):
+    def evaulate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
         if not self.is_trained:
             raise Exception('Error: Tree is not trained yet!')
-        return self.root.evaluate(samples)
+
+        processing_pool = ProcessingPool(images_data)
+        results = self.root.evaluate(samples, self.feature_type, processing_pool)
+        processing_pool.stop_workers()
+        return results
 
     def train(self, 
         images_data: Tuple[np.array, np.array, np.array],
@@ -367,6 +396,12 @@ class RegressionForest:
         self.is_trained = False
         self.trees = [RegressionTree(max_depth, feature_type, param_sampler, objective_function) for _ in range(num_trees)]
 
+    def evaluate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
+        if not self.is_trained:
+            raise Exception('Forest is not trained!')
+
+        return self.trees[0].evaulate(samples, images_data)
+
     def train(self,
         data: Tuple[np.array, np.array],
         images_data: Tuple[np.array, np.array, np.array],
@@ -387,4 +422,6 @@ class RegressionForest:
         """
         for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
             tree.train(images_data, data, num_param_samples, reset, num_workers)
+
+        self.is_trained = True
             

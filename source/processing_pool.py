@@ -70,8 +70,8 @@ def pool_worker(
 class ProcessingPool:
     def __init__(self, 
         images_data: Tuple[np.array, np.array, np.array],
-        worker_function: Callable[[any], Callable],
-        worker_params: Tuple,
+        worker_function: Callable[[any], Callable] = None,
+        worker_params: Tuple = (),
         num_workers: int = cpu_count()):
         self.shm_meta, self.close_shm = init_shared_memory(images_data)
         print(f'Initialized shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
@@ -79,13 +79,17 @@ class ProcessingPool:
         self.queue_work = Queue()
         self.queue_result = Queue()
         self.worker_params = worker_params
-        self.workers = [Process(
-                            target=pool_worker,
-                            args=(self.queue_work, self.queue_result, self.shm_meta, worker_function, worker_params)
-                        ) for i in range(num_workers)]
-        
-        for w in self.workers:
-            w.start()
+
+        if not worker_function == None:
+            self.workers = [Process(
+                                target=pool_worker,
+                                args=(self.queue_work, self.queue_result, self.shm_meta, worker_function, worker_params)
+                            ) for i in range(num_workers)]
+            
+            for w in self.workers:
+                w.start()
+        else:
+            self.workers = []
 
     def stop_workers(self):
         for w in self.workers:
