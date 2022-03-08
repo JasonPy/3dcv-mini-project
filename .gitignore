@@ -157,4 +157,12 @@ Temporary Items
 *-blx.bib
 *.run.xml
 
-data
+# Dataset
+data/chess/*
+data/fire/*
+data/heads/*
+data/office/*
+data/pumpkin/*
+data/redkitchen/*
+data/stairs/*
+data/unzip_dataset.sh

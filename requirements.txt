@@ -27,6 +27,7 @@ nbconvert
 nbformat
 networkx
 notebook
+numba
 numpy
 pandocfilters
 parso
@@ -53,6 +54,7 @@ testpath
 torch
 torchvision
 tornado
+tqdm
 traitlets
 wcwidth
 webencodings
