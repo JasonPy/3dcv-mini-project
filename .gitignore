@@ -170,3 +170,5 @@ data/pumpkin/*
 data/redkitchen/*
 data/stairs/*
 data/unzip_dataset.sh
+
+*.pkl
