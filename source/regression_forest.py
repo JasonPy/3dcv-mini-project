@@ -446,4 +446,6 @@ class RegressionForest:
                 num_workers = num_workers)
 
         self.is_trained = True
+        self.train_image_indices = train_image_indices
+        self.scene_name = scene_name
             
