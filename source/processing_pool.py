@@ -73,7 +73,7 @@ class ProcessingPool:
         worker_function: Callable[[any], Callable] = None,
         worker_params: Tuple = (),
         num_workers: int = cpu_count()):
-        self.shm_meta, self.close_shm = init_shared_memory(images_data)
+        self.shm_meta, self.unlink_shm = init_shared_memory(images_data)
         print(f'Initialized shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
 
         self.queue_work = Queue()
@@ -97,7 +97,7 @@ class ProcessingPool:
         for w in self.workers:
             w.join()
         print(f'All processing workers exited')
-        self.close_shm()
+        self.unlink_shm()
         print(f'Shared memory pool freed')
         self.queue_work.close()
         self.queue_work.cancel_join_thread()
