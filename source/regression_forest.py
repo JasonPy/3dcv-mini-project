@@ -412,6 +412,7 @@ class RegressionForest:
     def train(self,
         data_dir: str,
         scene_name: str,
+        train_image_indices: np.array,
         num_images_per_tree: int,
         num_samples_per_image: int,
         num_param_samples: int,
@@ -432,10 +433,9 @@ class RegressionForest:
             Reset tree
         """
         loader = DataLoader(data_dir)
-        image_indices = np.arange(loader.get_dataset_length(scene_name))
 
         for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
-            train_indices = np.random.choice(image_indices, size = num_images_per_tree, replace = False)
+            train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
             tree.train(
                 data_loader = loader,
                 scene_name = scene_name,
