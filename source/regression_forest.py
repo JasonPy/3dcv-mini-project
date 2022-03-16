@@ -400,7 +400,7 @@ class RegressionForest:
         if not self.is_trained:
             raise Exception('Forest is not trained!')
 
-        return self.trees[0].evaulate(samples, images_data)
+        return [tree.evaulate(samples, images_data) for tree in self.trees]
 
     def train(self,
         data: Tuple[np.array, np.array],
