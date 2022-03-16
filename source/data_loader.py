@@ -27,7 +27,7 @@ class DataLoader:
     def get_dataset_length(self, scene_name: str):
         return len(self.metadata[scene_name]) // 3 # three types of images per sample
 
-    def load_dataset(self, scene_name: str, index_slice: Tuple[int]):
+    def load_dataset(self, scene_name: str, image_indices: np.array):
         """
         Convert one of the 7-scenes datasets into numpy arrays.
     
@@ -35,7 +35,7 @@ class DataLoader:
         ----------
         scene_name:
             the directory from where the data is obtained
-        index_slice:
+        image_indices:
             the indices of the images to load
 
         Returns
@@ -45,9 +45,12 @@ class DataLoader:
             data_d: List,
             data_pose: List
         ]"""
-        i_low = index_slice[0] * 3
-        i_high = index_slice[1] * 3
-        files_to_load = self.metadata[scene_name][i_low:i_high]
+
+        files_to_load = []
+        meta_scene = self.metadata[scene_name]
+        for image_index in image_indices:
+            for i in range(3):
+                files_to_load.append(meta_scene[image_index + i])
 
         data_rgb = []
         data_d = []
