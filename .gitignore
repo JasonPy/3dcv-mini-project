@@ -132,10 +132,14 @@ Temporary Items
 *.toc
 *.ist
 *.acn
+*.fdb_latexmk
+*.fls
 *.acr
+*.aux
 *.alg
 *.bbl
 *.blg
+*.brf
 *.dvi
 *.glg
 *.gls
