@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from typing import Callable
 from multiprocessing import cpu_count
 from typing import Tuple
 
@@ -10,7 +10,7 @@ write = tqdm.write
 
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
-from utils import millis, vector_3d_array_mean, vector_3d_array_variance, split_set
+from utils import get_mode, millis, vector_3d_array_variance, split_set
 
 @njit
 def param_sampler(num_samples: int) -> np.array:
@@ -205,7 +205,7 @@ class Node:
             # We need to find the "mode"
             is_leaf_node = True
             _tqdm.update(_len_data)
-            self.leared_response = vector_3d_array_mean(w_s)
+            self.leared_response = get_mode(w_s)
             self.left_child = None
             self.right_child = None
         else:
@@ -271,17 +271,17 @@ class Node:
             if best_len_invalid == _len_data:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             elif _len_left == 0:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             elif _len_right == 0:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             else:
                 p_s = None
