@@ -11,6 +11,7 @@ write = tqdm.write
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
 from utils import get_mode, millis, vector_3d_array_variance, split_set
+from data_loader import DataLoader
 
 @njit
 def param_sampler(num_samples: int) -> np.array:
@@ -335,8 +336,10 @@ class RegressionTree:
         return results
 
     def train(self, 
-        images_data: Tuple[np.array, np.array, np.array],
-        data: Tuple[np.array, np.array],
+        data_loader: DataLoader,
+        scene_name: str,
+        train_indices: np.array,
+        num_samples_per_images: int,
         num_param_samples: int,
         reset: bool = False,
         num_workers: int = cpu_count()):
@@ -353,26 +356,29 @@ class RegressionTree:
             Reset tree
         """
 
+        images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
+        data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
+
         processing_pool = ProcessingPool(
             images_data = images_data,
             num_workers = num_workers,
             worker_function = regression_tree_worker_score,
             worker_params = (self.objective_function, self.feature_type))
         
+        images_data = None # Free this copy
         try:
-            images_data = None
-            tqdm.write(f'Training forest with {len(data[0])} samples')
+            tqdm.write(f'Training forest with {len(data_samples[0])} samples')
         
             _tqdm = tqdm(
                 iterable = None,
                 desc = 'Training tree  ',
-                total = len(data[0]) * self.max_depth,
+                total = len(data_samples[0]) * self.max_depth,
                 ascii = True
             )
 
             self.root.train(
                 depth = 0,
-                data = data,
+                data = data_samples,
                 processing_pool = processing_pool,
                 param_sampler = self.param_sampler,
                 num_param_samples = num_param_samples,
@@ -395,6 +401,7 @@ class RegressionForest:
         objective_function: Callable[[np.array, np.array, np.array], float]):
         self.is_trained = False
         self.trees = [RegressionTree(max_depth, feature_type, param_sampler, objective_function) for _ in range(num_trees)]
+        self.num_trees = num_trees
 
     def evaluate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
         if not self.is_trained:
@@ -403,13 +410,17 @@ class RegressionForest:
         return [tree.evaulate(samples, images_data) for tree in self.trees]
 
     def train(self,
-        data: Tuple[np.array, np.array],
-        images_data: Tuple[np.array, np.array, np.array],
+        data_dir: str,
+        scene_name: str,
+        num_images_per_tree: int,
+        num_samples_per_image: int,
         num_param_samples: int,
         reset: bool = False,
         num_workers: int = cpu_count()):
         """
-        Train this forest with the list of FeatureExtractors (images) given.
+        Train this forest with the list of data samples given. The complete list of samples
+        will be split among the self.num_trees trees and each tree trained on a subset of the
+        samples.
 
         Parameters
         ----------
@@ -420,8 +431,19 @@ class RegressionForest:
         reset: bool = False
             Reset tree
         """
+        loader = DataLoader(data_dir)
+        image_indices = np.arange(loader.get_dataset_length(scene_name))
+
         for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
-            tree.train(images_data, data, num_param_samples, reset, num_workers)
+            train_indices = np.random.choice(image_indices, size = num_images_per_tree, replace = False)
+            tree.train(
+                data_loader = loader,
+                scene_name = scene_name,
+                train_indices = train_indices,
+                num_samples_per_images = num_samples_per_image,
+                num_param_samples = num_param_samples,
+                reset = reset,
+                num_workers = num_workers)
 
         self.is_trained = True
             
