@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from typing import Callable
 from multiprocessing import cpu_count
 from typing import Tuple
 
@@ -10,7 +10,8 @@ write = tqdm.write
 
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
-from utils import millis, vector_3d_array_mean, vector_3d_array_variance, split_set
+from utils import get_mode, millis, vector_3d_array_variance, split_set
+from data_loader import DataLoader
 
 @njit
 def param_sampler(num_samples: int) -> np.array:
@@ -205,7 +206,7 @@ class Node:
             # We need to find the "mode"
             is_leaf_node = True
             _tqdm.update(_len_data)
-            self.leared_response = vector_3d_array_mean(w_s)
+            self.leared_response = get_mode(w_s)
             self.left_child = None
             self.right_child = None
         else:
@@ -271,17 +272,17 @@ class Node:
             if best_len_invalid == _len_data:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             elif _len_left == 0:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             elif _len_right == 0:
                 self.left_child = None
                 self.right_child = None
-                self.leared_response = vector_3d_array_mean(best_w_s_valid)
+                self.leared_response = get_mode(best_w_s_valid)
                 is_leaf_node = True
             else:
                 p_s = None
@@ -335,8 +336,10 @@ class RegressionTree:
         return results
 
     def train(self, 
-        images_data: Tuple[np.array, np.array, np.array],
-        data: Tuple[np.array, np.array],
+        data_loader: DataLoader,
+        scene_name: str,
+        train_indices: np.array,
+        num_samples_per_images: int,
         num_param_samples: int,
         reset: bool = False,
         num_workers: int = cpu_count()):
@@ -353,26 +356,29 @@ class RegressionTree:
             Reset tree
         """
 
+        images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
+        data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
+
         processing_pool = ProcessingPool(
             images_data = images_data,
             num_workers = num_workers,
             worker_function = regression_tree_worker_score,
             worker_params = (self.objective_function, self.feature_type))
         
+        images_data = None # Free this copy
         try:
-            images_data = None
-            tqdm.write(f'Training forest with {len(data[0])} samples')
+            tqdm.write(f'Training forest with {len(data_samples[0])} samples')
         
             _tqdm = tqdm(
                 iterable = None,
                 desc = 'Training tree  ',
-                total = len(data[0]) * self.max_depth,
+                total = len(data_samples[0]) * self.max_depth,
                 ascii = True
             )
 
             self.root.train(
                 depth = 0,
-                data = data,
+                data = data_samples,
                 processing_pool = processing_pool,
                 param_sampler = self.param_sampler,
                 num_param_samples = num_param_samples,
@@ -395,21 +401,27 @@ class RegressionForest:
         objective_function: Callable[[np.array, np.array, np.array], float]):
         self.is_trained = False
         self.trees = [RegressionTree(max_depth, feature_type, param_sampler, objective_function) for _ in range(num_trees)]
+        self.num_trees = num_trees
 
     def evaluate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
         if not self.is_trained:
             raise Exception('Forest is not trained!')
 
-        return self.trees[0].evaulate(samples, images_data)
+        return [tree.evaulate(samples, images_data) for tree in self.trees]
 
     def train(self,
-        data: Tuple[np.array, np.array],
-        images_data: Tuple[np.array, np.array, np.array],
+        data_dir: str,
+        scene_name: str,
+        train_image_indices: np.array,
+        num_images_per_tree: int,
+        num_samples_per_image: int,
         num_param_samples: int,
         reset: bool = False,
         num_workers: int = cpu_count()):
         """
-        Train this forest with the list of FeatureExtractors (images) given.
+        Train this forest with the list of data samples given. The complete list of samples
+        will be split among the self.num_trees trees and each tree trained on a subset of the
+        samples.
 
         Parameters
         ----------
@@ -420,8 +432,20 @@ class RegressionForest:
         reset: bool = False
             Reset tree
         """
+        loader = DataLoader(data_dir)
+
         for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
-            tree.train(images_data, data, num_param_samples, reset, num_workers)
+            train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
+            tree.train(
+                data_loader = loader,
+                scene_name = scene_name,
+                train_indices = train_indices,
+                num_samples_per_images = num_samples_per_image,
+                num_param_samples = num_param_samples,
+                reset = reset,
+                num_workers = num_workers)
 
         self.is_trained = True
+        self.train_image_indices = train_image_indices
+        self.scene_name = scene_name
             

@@ -132,10 +132,14 @@ Temporary Items
 *.toc
 *.ist
 *.acn
+*.fdb_latexmk
+*.fls
 *.acr
+*.aux
 *.alg
 *.bbl
 *.blg
+*.brf
 *.dvi
 *.glg
 *.gls
@@ -166,3 +170,5 @@ data/pumpkin/*
 data/redkitchen/*
 data/stairs/*
 data/unzip_dataset.sh
+
+*.pkl
