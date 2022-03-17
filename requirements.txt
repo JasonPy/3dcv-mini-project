@@ -29,6 +29,7 @@ networkx
 notebook
 numba
 numpy
+open3d
 pandocfilters
 parso
 pexpect
