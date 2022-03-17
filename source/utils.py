@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit
+from numba import njit, jit
 import time
 from typing import Tuple
 from sklearn.cluster import MeanShift
@@ -7,6 +7,7 @@ from sklearn.cluster import MeanShift
 def get_arrays_size_MB (arrays: Tuple[np.array]):
     return sum([arr.nbytes for arr in arrays]) / 1024 / 1024
 
+@njit
 def millis():
     return round(time.time() * 1000)
 
@@ -45,6 +46,7 @@ def vector_3d_array_variance(arr: np.array):
     mean = vector_3d_array_mean(arr)
     return np.sum(np.abs(arr - mean)) / size
 
+@jit
 def get_mode(arr: np.array):
     """
     Apply mean shift clustering to obtain modes. 

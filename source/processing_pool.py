@@ -1,7 +1,7 @@
 from typing import Callable, Tuple
 from tqdm import tqdm
 import numpy as np
-from multiprocessing import Process, cpu_count, shared_memory, Queue
+from multiprocessing import Process, cpu_count, shared_memory, JoinableQueue
 print = tqdm.write
 
 from feature_extractor import generate_data_samples
@@ -46,8 +46,8 @@ def load_shared_memory(metadata):
     return images_data, close
 
 def pool_worker(
-    queue_work: Queue,
-    queue_result: Queue,
+    queue_work: JoinableQueue,
+    queue_result: JoinableQueue,
     shm_meta: Tuple,
     worker_function: Callable[[any], Callable],
     worker_params: Tuple):
@@ -55,11 +55,12 @@ def pool_worker(
 
     while True:
         try:
-            index, work_data = queue_work.get()
-            if (index == -1):
+            done, work_data = queue_work.get()
+            if (done == True):
                 break
-            result = worker_function(images_data, *work_data, *worker_params)
-            queue_result.put((index, result))
+            result = worker_function(images_data, work_data, worker_params)
+            queue_result.put(result)
+            queue_work.task_done()
         except Exception as e:
             print(f'Uncaught error in pool_worker!: {e}')
             break
@@ -76,8 +77,8 @@ class ProcessingPool:
         self.shm_meta, self.unlink_shm = init_shared_memory(images_data)
         print(f'Initialized shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
 
-        self.queue_work = Queue()
-        self.queue_result = Queue()
+        self.queue_work = JoinableQueue()
+        self.queue_result = JoinableQueue()
         self.worker_params = worker_params
 
         if not worker_function == None:
@@ -91,16 +92,19 @@ class ProcessingPool:
         else:
             self.workers = []
 
-    def stop_workers(self):
+    def finish(self):
+        # Signal to workers to finish
         for w in self.workers:
-            self.queue_work.put((-1, None))
+            self.queue_work.put((True, None))
+        # Wait for workers to finish
         for w in self.workers:
             w.join()
+            w.close()
         print(f'All processing workers exited')
         self.unlink_shm()
         print(f'Shared memory pool freed')
         self.queue_work.close()
-        self.queue_work.cancel_join_thread()
+        self.queue_work.join_thread()
 
     def get_image_data(self):
         return load_shared_memory(self.shm_meta)
@@ -108,13 +112,8 @@ class ProcessingPool:
     def get_worker_params(self):
         return self.worker_params
 
-    def process_work(self, work_datas):
-        i_s = range(len(work_datas))
-        for i in i_s:
-            self.queue_work.put((i, work_datas[i]))
+    def enqueue_work_async(self, work_data):
+        self.queue_work.put((False, work_data))
 
-        results = [0] * len(i_s)
-        for _ in tqdm(i_s, delay = 1, ascii = True, leave = False, desc = f'Training node  '):
-            i, result = self.queue_result.get()
-            results[i] = result
-        return results
+    def join_on_work_queue(self):
+        self.queue_work.join()

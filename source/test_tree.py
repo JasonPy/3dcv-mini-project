@@ -15,7 +15,7 @@ SCENE = 'fire'
 TEST_SIZE = 0.5
 
 NUM_TREES = 5
-NUM_TRAIN_IMAGES_PER_TREE = 500
+NUM_TRAIN_IMAGES_PER_TREE = 50
 NUM_SAMPLES_PER_IMAGE = 5000
 NUM_PARAMETER_SAMPLES = 1024
 
@@ -28,6 +28,7 @@ forest = RegressionForest(
     num_trees = NUM_TREES,
     max_depth = 16,
     feature_type = FeatureType.DA_RGB,
+    num_param_samples = NUM_PARAMETER_SAMPLES,
     param_sampler = param_sampler,
     objective_function = objective_reduction_in_variance)
 
@@ -36,8 +37,7 @@ forest.train(
     scene_name = SCENE,
     train_image_indices = train_indices,
     num_images_per_tree = NUM_TRAIN_IMAGES_PER_TREE,
-    num_samples_per_image = NUM_SAMPLES_PER_IMAGE,
-    num_param_samples = NUM_PARAMETER_SAMPLES)
+    num_samples_per_image = NUM_SAMPLES_PER_IMAGE)
 
 if forest.is_trained:
     filename = 'trained_forest_1024.pkl'
