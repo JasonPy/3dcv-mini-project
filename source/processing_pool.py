@@ -97,20 +97,28 @@ class ProcessingPool:
             self.workers = []
 
     def finish(self):
-        # Signal to workers to finish
-        for w in self.workers:
-            self.queue_work.put((True, None))
-        # Wait for workers to finish
-        print(f'Waiting for workers to terminate')
-        sleep(1)
-        for w in self.workers:
-            w.join()
-            w.close()
-        print(f'All processing workers exited')
-        self.unlink_shm()
-        print(f'Shared memory pool freed')
-        self.queue_work.close()
-        self.queue_work.join_thread()
+        try:
+            # Signal to workers to finish
+            for w in self.workers:
+                self.queue_work.put((True, None))
+            # Wait for workers to finish
+            print(f'Waiting for workers to terminate')
+            sleep(3)
+            for w in self.workers:
+                w.join(2)
+                if not w.is_alive:
+                    w.close()
+                else:
+                    w.terminate()
+            print(f'All processing workers exited')
+            self.unlink_shm()
+            print(f'Shared memory pool freed')
+            self.queue_work.close()
+            self.queue_work.join_thread()
+            self.queue_work.close()
+            self.queue_work.join_thread()
+        except Exception as e:
+            print(f'Error stopping workers: ', e)
 
     def enqueue_work(self, work_data):
         self.queue_work.put((False, work_data))
