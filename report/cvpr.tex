@@ -83,30 +83,8 @@ used for estimating the camera pose from the image data. We will not discuss all
 in full detail but only provide further explanations where we find it relevant
 for the presentation of our work and results.
 
-\subsection{Regression Forest}
-
-In this project we use a regression forest to predict scene coordinates for a given
-sample image coordinate as suggested in \cite{shotton2013}. In this section we will
-give some background on the concept of regression forests, the pixel coordinate
-labeling and the image-feature extraction on which the forests base their predictions.\\
-
-\subsubsection{Decision Trees}
-A regression forest consists of a number $N$ of regression trees, which each consist of
-of root node and it's children. We consider the special case of binary decision trees
-where each node (unless it is a leaf node) has a left and a right child. At each node
-the input data ()
-
-\subsubsection{Image Features}
-In order to use a descision tree to infer scene coordinates from the pixel coordinates,
-it is necessary to calculate features associated with a given pixel cooridnate from the
-image data. 
-
-
-%-------------------------------------------------------------------------
-\subsection{RANSAC Optimization}
-
-%-------------------------------------------------------------------------
 \subsection{Data Preperation}
+%-------------------------------------------------------------------------
 To train the regression forest the 7-scenes datset~\cite{glocker2013} is utilized. 
 Each scene consists of multiple image sequences that cover the are of interest. Using a RGB-D 
 Kinect camera, depth information for each pixel is extracted. The resolution of the $24$ 
@@ -115,6 +93,79 @@ in millimeters. For each image a $4\times4$ ground truth camera pose in homogeno
 is provided, which allows to validate the estimated camera pose matrix for a given image. 
 
 The datasets are split randonly into train and test according to~\cite[Table 1]{shotton2013}. 
+
+% WIP FALK:
+Our data consists of a number of samples $\{(\textbf{p}_i, \textbf{w}_i)\}$ with
+$\textbf{p}_i = (x_l, y_l)_i$ and $\textbf{w}_i = (x_s, y_s, z_s)_i$ where the subscripts
+$l$ and $s$ denote image pixel coordinates and scene coordinates respectively.\\
+
+\subsection{Regression Forest}
+%-------------------------------------------------------------------------
+
+In this project we use a regression forest to predict scene coordinates for a given
+sample image coordinate as suggested in \cite{shotton2013}. In this section we will
+give some background on the concept of regression forests, the pixel coordinate
+labeling and the image-feature extraction on which the forests base their predictions.\\
+
+\subsubsection{Decision Trees}
+%-------------------------------------------------------------------------
+A regression forest consists of a number $N$ of regression trees, which each consist of
+of root node and it's children. We consider the special case of binary decision trees
+where each node (unless it is a leaf node) has a left and a right child. Each node $n$
+stores a set of parameters $\theta_n$ which are used in the calculation of a
+feature response function $f_{\theta}(\textbf{p}) \in \{1, 0\}$ which determines if the input
+data point \textbf{p} is branched to the left or right child node. To every leaf node
+(i.e. a node without children) we assign a response value $\textbf{w}_n$ representing
+the tree's prediction for a data point \textbf{p} that has reached this node. In our
+specific application the input data points \textbf{p} are 2D pixel coordinates and the
+responses \textbf{w} are 3D world coordinates.\\
+
+The process of training the tree involves finding the set of parameters
+$\{\theta_n | \, \forall \, \text{nodes} \, n\}$ which results in the best predictions
+for previously unseen input data points \textbf{p}. However, this final goal cannot
+be optimized towards directly during training, as this would entail optimization in the
+very large space of all possible parameters for all tree-nodes simultaneously. Therefore
+it is much more efficient to optimize the parameters one node at a time using a
+proxy-objective $Q(S_{\text{tot}},\, S_{\text{left}}(\theta),\, S_{\text{right}}(\theta))$
+which ideally leads to a similar result.\\
+
+Let $S_{\text{tot},n} = \{ (\textbf{p}_i, \textbf{w}_i) \, | \, i \in |S_n|\}$ denote the
+input data and target response for a given node $n$. According to its parameters the
+node splits this set into the subsets
+\begin{equation}
+\begin{split}
+	S_{\text{left},n}(\theta_n) = \{(\textbf{p}_i, \textbf{w}_i) \,|\, f_{\theta_n}(\textbf{p}_i) = 0\} \\
+	S_{\text{right},n}(\theta_n) = \{(\textbf{p}_i, \textbf{w}_i) \,|\, f_{\theta_n}(\textbf{p}_i) = 1\}
+\end{split}
+\end{equation}
+corresponding to left and right child node respectively. The objective function $Q$ is
+then used to assign a score to the split resulting from the parameters $\theta_n$ at
+this node.\\
+
+The objective function used here optimizes for a reduction in variance of the target 
+responses (i.e. "wants the tree to group together points similar scene coordinates").
+Defining $W_n = \{ \textbf{w}_i \, | \, (\textbf{p}_i, \textbf{w}_i) \in S_n \}$ this
+objective can be mathematically expressed as
+
+\begin{equation}
+	Q(W_\text{tot}, \theta) =
+		\text{Var}(W_\text{tot}) - \sum_{d\,\in\{\text{left,\,right}\}}
+			\dfrac{|W_d(\theta)|}{|W_\text{tot}|} \text{Var}(W_d(\theta))
+\end{equation}
+\begin{equation}
+	\text{with} \hspace{5mm} \text{Var}(W) = |W|^{-1} \sum_{\textbf{w}\in W} ||\textbf{w} - \bar{\textbf{w}}||_2^2
+\end{equation}
+
+
+\subsubsection{Image Features}
+%-------------------------------------------------------------------------
+In order to use a decision tree to infer scene coordinates from the pixel coordinates,
+it is necessary to calculate features associated with a given pixel coordinate from the
+image data. 
+
+
+%-------------------------------------------------------------------------
+\subsection{RANSAC Optimization}
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation}
@@ -140,7 +191,6 @@ where $tr(R)$ is the tracce of a matrix.
 
 Based on these metrics the test data set for each scene is used to predict the amount of correctly 
 estimated camera poses. These findings are then compared to the results of~\cite{shotton2013}.
-
 
 %-------------------------------------------------------------------------
 \section{Results}
