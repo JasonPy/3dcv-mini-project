@@ -14,11 +14,11 @@ class Evaluator:
         Parameters
         ----------
         translational_error_threshold: float
-            distance in cm 
+            distance in cm
         angular_error_threshold: float
             angle in degrees
         """
-        self.translational_error_threshold = translational_error_threshold
+        self.translational_error_threshold = translational_error_threshold * 10. # to mm
         self.angular_error_threshold = angular_error_threshold
 
 
@@ -109,6 +109,6 @@ class Evaluator:
         T_gt = ground_truth[:,:3,3]
 
         # calculate translational error
-        translational_error = np.sum(np.sqrt((T_pos - T_gt)**2), axis=1)
+        translational_error = np.linalg.norm(T_pos- T_gt, axis=1)
 
         return translational_error
