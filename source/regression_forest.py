@@ -141,7 +141,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         if len_invalid == len_data:
             # All samples are invalid. Edge case; not observed so far
-            tree.handle_write(f'Error in node {node_id}: All samples considered invalid')
+            print(f'Error in node {node_id}: All samples considered invalid')
             result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = w_s[0])
 
         elif len_right == 0 or len_left == 0:
