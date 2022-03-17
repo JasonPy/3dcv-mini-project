@@ -40,7 +40,7 @@
 \and
 Jason Pyanowski\\
 3663907\\
-{\tt\small ---@stud.uni-heidelberg.de}
+{\tt\small j.pyanowski@stud.uni-heidelberg.de}
 \and
 Marven Hinze\\
 3664283\\
@@ -107,9 +107,38 @@ image data.
 
 %-------------------------------------------------------------------------
 \subsection{Data Preperation}
+To train the regression forest the 7-scenes datset~\cite{glocker2013} is utilized. 
+Each scene consists of multiple image sequences that cover the are of interest. Using a RGB-D 
+Kinect camera, depth information for each pixel is extracted. The resolution of the $24$ 
+bit RGB-images is $640\times480$ pixels and the corresponding $16$ bit depth map is given 
+in millimeters. For each image a $4\times4$ ground truth camera pose in homogenous coordinates 
+is provided, which allows to validate the estimated camera pose matrix for a given image. 
+
+The datasets are split randonly into train and test according to~\cite[Table 1]{shotton2013}. 
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation}
+To validate the implementation, the estimated camera poses are compared to the results 
+of~\cite{shotton2013}. Therefore, the translational and angular error of the estimated camera 
+poses with respect to the ground truth is measured. In particular, a translational error of at 
+most $5$cm and angular error of at most $5^{\circ}$ is considered to be a correctly predicted pose. 
+
+Let the estimated pose matrix $H_{est}$ and the ground truth $H_{gt}$ be $4 \times 4$ matrices
+in homogeneous coordinates. Then the translational error $\varepsilon_t$ is obtained by using the 
+coordinate-wise $L_2$-norm of the translation vectors $T_{est}, T_{gt} \in \mathbb{R}^3$ as 
+\begin{align}
+    \varepsilon_t &= \sqrt{(T_{est} - T_{gt})^2}
+\end{align}
+
+To compare two rotational poses, the angle of the difference rotation matrix $R$ is utilized. 
+Let denote the whole $3\times3$ upper-left matrix of $H_{est}$ and $H_{gt}$ as $R_{est}$ and 
+$R_{gt}$ repectively. They refer to the rotational poses and the difference rotation can be computed 
+by $R = R_{est}R_{gt}^T$. The angle $\varepsilon_r$ between those two rotation matrices is then obtained as
+\begin{align}
+    \varepsilon_r &= arccos \frac{tr(R)-1}{2}
+\end{align}
+where $tr(R)$ is the tracce of a matrix.
+
 
 %-------------------------------------------------------------------------
 \section{Results}
