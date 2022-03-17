@@ -1,3 +1,4 @@
+from time import sleep
 from typing import Callable, Tuple
 from tqdm import tqdm
 import numpy as np
@@ -50,13 +51,15 @@ def pool_worker(
     queue_result: JoinableQueue,
     shm_meta: Tuple,
     worker_function: Callable[[any], Callable],
-    worker_params: Tuple):
+    worker_params: Tuple,
+    worker_idx: int):
     images_data, close_shm = load_shared_memory(shm_meta)
 
     while True:
         try:
             done, work_data = queue_work.get()
             if (done == True):
+                queue_work.task_done()
                 break
             result = worker_function(images_data, work_data, worker_params)
             queue_result.put(result)
@@ -67,6 +70,7 @@ def pool_worker(
         except KeyboardInterrupt:
             break
     close_shm()
+    print(f'Stopping worker #{worker_idx}')
 
 class ProcessingPool:
     def __init__(self, 
@@ -84,7 +88,7 @@ class ProcessingPool:
         if not worker_function == None:
             self.workers = [Process(
                                 target=pool_worker,
-                                args=(self.queue_work, self.queue_result, self.shm_meta, worker_function, worker_params)
+                                args=(self.queue_work, self.queue_result, self.shm_meta, worker_function, worker_params, i)
                             ) for i in range(num_workers)]
             
             for w in self.workers:
@@ -97,6 +101,8 @@ class ProcessingPool:
         for w in self.workers:
             self.queue_work.put((True, None))
         # Wait for workers to finish
+        print(f'Waiting for workers to terminate')
+        sleep(1)
         for w in self.workers:
             w.join()
             w.close()
@@ -106,14 +112,5 @@ class ProcessingPool:
         self.queue_work.close()
         self.queue_work.join_thread()
 
-    def get_image_data(self):
-        return load_shared_memory(self.shm_meta)
-
-    def get_worker_params(self):
-        return self.worker_params
-
-    def enqueue_work_async(self, work_data):
+    def enqueue_work(self, work_data):
         self.queue_work.put((False, work_data))
-
-    def join_on_work_queue(self):
-        self.queue_work.join()

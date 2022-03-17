@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit, jit
+from numba import njit, jit, objmode
 import time
 from typing import Tuple
 from sklearn.cluster import MeanShift
@@ -7,7 +7,6 @@ from sklearn.cluster import MeanShift
 def get_arrays_size_MB (arrays: Tuple[np.array]):
     return sum([arr.nbytes for arr in arrays]) / 1024 / 1024
 
-@njit
 def millis():
     return round(time.time() * 1000)
 
@@ -46,7 +45,7 @@ def vector_3d_array_variance(arr: np.array):
     mean = vector_3d_array_mean(arr)
     return np.sum(np.abs(arr - mean)) / size
 
-@jit
+@njit("float32[:](float32[:, :])")
 def get_mode(arr: np.array):
     """
     Apply mean shift clustering to obtain modes. 
@@ -62,6 +61,9 @@ def get_mode(arr: np.array):
     mode: float
         Most frequent coordinate center after clustering
     """
-    modes = MeanShift(bandwidth=.1).fit(arr)
-    mode = np.bincount(modes.labels_).argmax()
-    return modes.cluster_centers_[mode]
+    with objmode(labels_='int64[:]', cluster_centers_='float32[:,:]'):
+        modes = MeanShift(bandwidth=.1).fit(arr)
+        labels_ = modes.labels_
+        cluster_centers_ = modes.cluster_centers_
+    mode = np.bincount(labels_).argmax()
+    return cluster_centers_[mode]
