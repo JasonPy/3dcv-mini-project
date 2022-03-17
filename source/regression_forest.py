@@ -18,10 +18,10 @@ from data_loader import DataLoader
 def param_sampler(num_samples: int) -> np.array:
     rgb_coords = np.array([0, 1, 2])
     tau = np.zeros(num_samples)
-    delta1x = uniform(-130 * 100, 130 * 100, num_samples)
-    delta1y = uniform(-130 * 100, 130 * 100, num_samples)
-    delta2x = uniform(-130 * 100, 130 * 100, num_samples)
-    delta2y = uniform(-130 * 100, 130 * 100, num_samples)
+    delta1x = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta1y = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta2x = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta2y = uniform(-130 * 1000, 130 * 1000, num_samples)
     c1 = choice(rgb_coords, num_samples, replace=True)
     c2 = choice(rgb_coords, num_samples, replace=True)
     return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T.astype(np.float64)
@@ -64,7 +64,7 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
         mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_samples[i], feature_type)
         w_s_valid = w_s[mask_valid]
         set_left, set_right = split_set(w_s_valid, mask_split)
-        scores[i] = objective_function(w_complete = w_s_valid, w_left = set_left, w_right = set_right)
+        scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
     return scores
 
 class TreeWorkerResult:
