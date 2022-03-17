@@ -78,7 +78,7 @@ class Evaluator:
         R_gt = ground_truth[:,:3,:3]
 
         # compute the difference matrix, representing the difference rotation
-        R_diff = np.matmul(np.transpose(R_gt, axes=(0,2,1)), R_pos)
+        R_diff = np.matmul(R_pos, np.transpose(R_gt, axes=(0,2,1)))
 
         # get the angle theta of difference rotations
         theta = (np.trace(R_diff, axis1=1, axis2=2) - 1) / 2
@@ -109,6 +109,6 @@ class Evaluator:
         T_gt = ground_truth[:,:3,3]
 
         # calculate translational error
-        translational_error = np.sqrt(np.sum((T_pos - T_gt)**2, axis=1))
+        translational_error = np.sum(np.sqrt((T_pos - T_gt)**2), axis=1)
 
         return translational_error
