@@ -27,10 +27,10 @@
 \begin{document}
 
 %%%%%%%%% TITLE
-\title{Camera Pose Estimation using Regression Tree and RANSAC Optimization}
+\title{Camera Pose Estimation using Regression Forest and RANSAC Optimization}
 
 \author{Falk Ebert\\
-4018276\\
+\tt 4018276\\
 {\tt\small f.ebert@stud.uni-heidelberg.de}
 % For a paper whose authors are all at the same institution,
 % omit the following lines up until the closing ``}''.
@@ -39,16 +39,16 @@
 % To save space, use either the email address or home page, not both
 \and
 Jason Pyanowski\\
-3663907\\
+\tt 3663907\\
 {\tt\small j.pyanowski@stud.uni-heidelberg.de}
 \and
 Marven Hinze\\
-3664283\\
-{\tt\small ---@stud.uni-heidelberg.de}
+\tt 3664283\\
+{\tt\small m.hinze@stud.uni-heidelberg.de}
 \and
 Nadine Theissen\\
-3475402\\
-{\tt\small ---@stud.uni-heidelberg.de}
+\tt 3475402\\
+{\tt\small n.theissen@stud.uni-heidelberg.de}
 }
 
 \maketitle
@@ -118,26 +118,28 @@ The datasets are split randonly into train and test according to~\cite[Table 1]{
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation}
-To validate the implementation, the estimated camera poses are compared to the results 
-of~\cite{shotton2013}. Therefore, the translational and angular error of the estimated camera 
-poses with respect to the ground truth is measured. In particular, a translational error of at 
+To evaluate the estimated camera poses, the translational and angular error with respect to the 
+ground truth camera poses is measured. In particular, a translational error of at 
 most $5$cm and angular error of at most $5^{\circ}$ is considered to be a correctly predicted pose. 
 
 Let the estimated pose matrix $H_{est}$ and the ground truth $H_{gt}$ be $4 \times 4$ matrices
 in homogeneous coordinates. Then the translational error $\varepsilon_t$ is obtained by using the 
-coordinate-wise $L_2$-norm of the translation vectors $T_{est}, T_{gt} \in \mathbb{R}^3$ as 
+$L_2$-norm of the translation vectors $T_{est}, T_{gt} \in \mathbb{R}^3$ as 
 \begin{align}
-    \varepsilon_t &= \sqrt{(T_{est} - T_{gt})^2}
+    \varepsilon_t &= \sqrt{\sum_{x,y,z}(T_{est} - T_{gt})^2}.
 \end{align}
 
 To compare two rotational poses, the angle of the difference rotation matrix $R$ is utilized. 
-Let denote the whole $3\times3$ upper-left matrix of $H_{est}$ and $H_{gt}$ as $R_{est}$ and 
+Denote the whole $3\times3$ upper-left matrix of $H_{est}$ and $H_{gt}$ as $R_{est}$ and 
 $R_{gt}$ repectively. They refer to the rotational poses and the difference rotation can be computed 
-by $R = R_{est}R_{gt}^T$. The angle $\varepsilon_r$ between those two rotation matrices is then obtained as
+by $R = R_{est}^TR_{gt}$. The angle $\varepsilon_r$ between those two rotation matrices is then obtained as
 \begin{align}
-    \varepsilon_r &= arccos \frac{tr(R)-1}{2}
+    \varepsilon_r &= arccos \left( \frac{tr(R)-1}{2} \right)
 \end{align}
 where $tr(R)$ is the tracce of a matrix.
+
+Based on these metrics the test data set for each scene is used to predict the amount of correctly 
+estimated camera poses. These findings are then compared to the results of~\cite{shotton2013}.
 
 
 %-------------------------------------------------------------------------
