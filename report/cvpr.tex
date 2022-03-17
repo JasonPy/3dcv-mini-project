@@ -63,16 +63,44 @@ Nadine Theissen\\
 \section{Introduction}
 cite it~\cite{shotton2013}
 
+% What are we doing in this project?
+%	-> Scene coordinate regression
+% 	-> Camera pose estimation
+% Why is this important?
+
+% What data is given
+% 	-> Image data including depth, camera poses
+
 %-------------------------------------------------------------------------
 \subsection{Related Work}
 
 
 \section{Methods}
 %-------------------------------------------------------------------------
+This section gives an overview of the methods used in this project. We will discuss
+the concept of regression forests including feature extraction and the RANSAC algorithm
+used for estimating the camera pose from the image data. We will not discuss all aspects
+in full detail but only provide further explanations where we find it relevant
+for the presentation of our work and results.
+
 \subsection{Regression Forest}
 
 In this project we use a regression forest to predict scene coordinates for a given
-sample image coordinate. Bla bla.
+sample image coordinate as suggested in \cite{shotton2013}. In this section we will
+give some background on the concept of regression forests, the pixel coordinate
+labeling and the image-feature extraction on which the forests base their predictions.\\
+
+\subsubsection{Decision Trees}
+A regression forest consists of a number $N$ of regression trees, which each consist of
+of root node and it's children. We consider the special case of binary decision trees
+where each node (unless it is a leaf node) has a left and a right child. At each node
+the input data ()
+
+\subsubsection{Image Features}
+In order to use a descision tree to infer scene coordinates from the pixel coordinates,
+it is necessary to calculate features associated with a given pixel cooridnate from the
+image data. 
+
 
 %-------------------------------------------------------------------------
 \subsection{RANSAC Optimization}
