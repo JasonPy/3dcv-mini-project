@@ -334,7 +334,8 @@ class RegressionTree:
         tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples')
         self.total_iterations = len(data_samples[0]) * self.max_depth
         self.progress = 0
-        self.tqdm = tqdm(
+
+        with tqdm(
             iterable = None,
             desc = 'Training tree  ',
             smoothing = 0.05,
@@ -343,39 +344,45 @@ class RegressionTree:
             mininterval = 0.2,
             maxinterval = 2,
             total = self.total_iterations,
-            ascii = True)
+            ascii = True) as tqdm_progress:
 
-        self.processing_pool = ProcessingPool(
-            images_data = images_data,
-            num_workers = num_workers,
-            worker_function = regression_tree_worker,
-            worker_params = (self))
-        images_data = None # Free this copy
-        queue_work = self.processing_pool.queue_work
-        queue_result = self.processing_pool.queue_result
+            self.tqdm = tqdm_progress
+            self.processing_pool = ProcessingPool(
+                images_data = images_data,
+                num_workers = num_workers,
+                worker_function = regression_tree_worker,
+                worker_params = (self))
+            images_data = None # Free this copy
+            queue_work = self.processing_pool.queue_work
+            queue_result = self.processing_pool.queue_result
 
-        try:
-            root_node = Node('0')
-            self.add_node(root_node)
-            work_data = (root_node.id, root_node.depth, data_samples[0], data_samples[1])
-            self.processing_pool.enqueue_work(work_data)
+            was_interruped = False
 
-            while not (self.progress == self.total_iterations):
-                self.handle_node_result(queue_result.get())
-                queue_result.task_done()
+            try:
+                root_node = Node('0')
+                self.add_node(root_node)
+                work_data = (root_node.id, root_node.depth, data_samples[0], data_samples[1])
+                self.processing_pool.enqueue_work(work_data)
 
-            tqdm.write('Training complete.')
-            queue_work.join()
-            tqdm.write('Work queue emptied.')
-            self.is_trained = True
-        except KeyboardInterrupt:
-            tqdm.write(f'Stopping training due to KeyboardInterrupt')
-        finally:
-            self.processing_pool.finish()
+                while not (self.progress == self.total_iterations):
+                    self.handle_node_result(queue_result.get())
+                    queue_result.task_done()
 
-            # Cleanup class attributes not to be serialized
-            self.processing_pool = None
-            self.tqdm = None
+                tqdm.write('Training complete.')
+                queue_work.join()
+                tqdm.write('Work queue emptied.')
+                self.is_trained = True
+            except KeyboardInterrupt:
+                tqdm.write(f'Stopping training due to KeyboardInterrupt')
+                was_interruped = True
+            finally:
+                self.processing_pool.finish()
+
+                # Cleanup class attributes not to be serialized
+                self.processing_pool = None
+                self.tqdm = None
+                if was_interruped:
+                    raise KeyboardInterrupt()
 
 class RegressionForest:
     def __init__(self,
@@ -425,11 +432,14 @@ class RegressionForest:
         """
         loader = DataLoader(data_dir)
 
-        for tree in tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True):
-            train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
-            tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
+        try:
+            with tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True) as trees:
+                for tree in trees:
+                    train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
+                    tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
 
-        self.is_trained = True
-        self.train_image_indices = train_image_indices
-        self.scene_name = scene_name
-            
+                self.is_trained = True
+                self.train_image_indices = train_image_indices
+                self.scene_name = scene_name
+        except KeyboardInterrupt:
+            pass            

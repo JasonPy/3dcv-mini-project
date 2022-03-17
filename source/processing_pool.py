@@ -70,7 +70,7 @@ def pool_worker(
         except KeyboardInterrupt:
             break
     close_shm()
-    print(f'Stopping worker #{worker_idx}')
+    # print(f'Stopping worker #{worker_idx}')
 
 class ProcessingPool:
     def __init__(self, 
@@ -79,7 +79,7 @@ class ProcessingPool:
         worker_params: Tuple = (),
         num_workers: int = cpu_count()):
         self.shm_meta, self.unlink_shm = init_shared_memory(images_data)
-        print(f'Initialized shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
+        print(f'Allocated shared memory pool of {get_arrays_size_MB(images_data):3.3F}MB')
 
         self.queue_work = JoinableQueue()
         self.queue_result = JoinableQueue()
@@ -102,17 +102,16 @@ class ProcessingPool:
             for w in self.workers:
                 self.queue_work.put((True, None))
             # Wait for workers to finish
-            print(f'Waiting for workers to terminate')
+            print(f'Shutting down worker processes.')
             sleep(3)
             for w in self.workers:
-                w.join(2)
+                w.join(1)
                 if not w.is_alive:
                     w.close()
                 else:
                     w.terminate()
-            print(f'All processing workers exited')
             self.unlink_shm()
-            print(f'Shared memory pool freed')
+            print(f'Deallocated shared memory pool')
             self.queue_work.close()
             self.queue_work.join_thread()
             self.queue_work.close()
