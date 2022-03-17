@@ -98,7 +98,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
     len_data = len(p_s)
     is_leaf_node = False
     progress = 0
-    _ms_start = millis()
+    # _ms_start = millis()
 
     # Check if this node should not be trained
     if len_data == 1 or depth == tree.max_depth:
@@ -117,7 +117,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
             param_samples = param_samples,
             objective_function = tree.objective_function,
             feature_type = tree.feature_type)
-        _delta_get_features = millis() - _ms_start
+        # _delta_get_features = millis() - _ms_start
         
         # Find best parameter and calculate split (again, I know)
         max_score_index = np.argmax(scores)
@@ -136,7 +136,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
         len_right = np.sum(~mask_split)
 
         # Report training progress
-        _delta_split = millis() - _delta_get_features - _ms_start
+        # _delta_split = millis() - _delta_get_features - _ms_start
         progress += len_data
 
         if len_invalid == len_data:
@@ -158,9 +158,9 @@ def regression_tree_worker(image_data, work_data, worker_params):
                 is_leaf = False,
                 params = best_params,
                 set_left = (p_s_left, w_s_left),
-                set_right = (p_s_right, w_s_right),
-                lengths = (len_data, len_invalid, len_left, len_right),
-                timings = (_delta_get_features, _delta_split))
+                set_right = (p_s_right, w_s_right))#,
+                # lengths = (len_data, len_invalid, len_left, len_right),
+                # timings = (_delta_get_features, _delta_split))
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
@@ -290,12 +290,12 @@ class RegressionTree:
             self.processing_pool.enqueue_work(train_left_work_data)
             self.processing_pool.enqueue_work(train_right_work_data)
 
-            len_data, len_invalid, len_left, len_right = result.lengths
-            _delta_get_features, _delta_split = result.timings
-            _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
-            _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
-            kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
-            tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
+            # len_data, len_invalid, len_left, len_right = result.lengths
+            # _delta_get_features, _delta_split = result.timings
+            # _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
+            # _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
+            # kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
+            # tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
 
         # I don't really know if this is necessary. I want pointers :(
         self.nodes[result.node_id] = node
@@ -331,12 +331,17 @@ class RegressionTree:
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
 
-        tqdm.write(f'Training forest with {len(data_samples[0])} samples')
+        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples')
         self.total_iterations = len(data_samples[0]) * self.max_depth
         self.progress = 0
         self.tqdm = tqdm(
             iterable = None,
             desc = 'Training tree  ',
+            smoothing = 0.05,
+            dynamic_ncols = True,
+            unit_scale = True,
+            mininterval = 0.2,
+            maxinterval = 2,
             total = self.total_iterations,
             ascii = True)
 
@@ -420,7 +425,7 @@ class RegressionForest:
         """
         loader = DataLoader(data_dir)
 
-        for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
+        for tree in tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True):
             train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
             tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
 
