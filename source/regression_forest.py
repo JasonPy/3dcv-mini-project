@@ -26,12 +26,6 @@ def param_sampler(num_samples: int) -> np.array:
     c2 = choice(rgb_coords, num_samples, replace=True)
     return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T.astype(np.float64)
 
-param_type = types.float64[:]
-empty_f32_1d = np.array([], dtype=np.float32)
-empty_f32_2d = np.array([[]], dtype=np.float32)
-empty_i16_2d = np.array([[]], dtype=np.int16)
-empty_params = param_sampler(1)[0]
-
 @njit
 def objective_reduction_in_variance (
     w_complete: np.array,
