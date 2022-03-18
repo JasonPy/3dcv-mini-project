@@ -23,6 +23,7 @@ class DataLoader:
                     files = sorted(os.listdir(segment_dir_path))
                     file_paths = [os.path.join(scene_dir, segment_dir, file) for file in files]
                     self.metadata[scene].extend(file_paths)
+            self.metadata[scene] = sorted(self.metadata[scene])
 
     def get_dataset_length(self, scene_name: str):
         return len(self.metadata[scene_name]) // 3 # three types of images per sample
@@ -47,10 +48,10 @@ class DataLoader:
         ]"""
 
         files_to_load = []
-        meta_scene = self.metadata[scene_name]
+        file_paths_for_scene = self.metadata[scene_name]
         for image_index in image_indices:
             for i in range(3):
-                files_to_load.append(meta_scene[image_index + i])
+                files_to_load.append(file_paths_for_scene[image_index * 3 + i])
 
         data_rgb = []
         data_d = []
