@@ -86,12 +86,14 @@ class DataLoader:
         num_images = images_data[0].shape[0]
         p_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.int16)
         w_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.float32)
+        total_samples = 0
 
         for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples', dynamic_ncols = True, leave = False):
             (p_s, w_s) = generate_data_samples(images_data, i, num_samples)
             num_samples = len(p_s)
+            total_samples += num_samples
             
             p_s_tot[i*num_samples:(i+1)*num_samples] = p_s
             w_s_tot[i*num_samples:(i+1)*num_samples] = w_s
 
-        return p_s_tot, w_s_tot
+        return p_s_tot[0:total_samples], w_s_tot[0:total_samples]
