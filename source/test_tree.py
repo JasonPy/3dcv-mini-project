@@ -51,7 +51,8 @@ params = {
   "NUM_TRAIN_IMAGES_PER_TREE": NUM_TRAIN_IMAGES_PER_TREE,
   "NUM_SAMPLES_PER_IMAGE": NUM_SAMPLES_PER_IMAGE,
   "NUM_PARAMETER_SAMPLES": NUM_PARAMETER_SAMPLES,
-  "SPLIT_MASK": [train_indices, test_indices],
+  "TRAIN_INDICES": train_indices,
+  "TEST_INDICES": test_indices
 }
 
 if forest.is_trained:
