@@ -68,16 +68,27 @@ def get_mode(arr: np.array):
     mode = np.bincount(labels_).argmax()
     return cluster_centers_[mode]
 
-def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320,240)) -> np.array:
+@njit
+def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 240)) -> np.array:
     fx, fy = focal_length
     cx, cy = principle_point
 
-    K = np.diag([fx,fy,1])
+    K = np.diag(np.array([fx, fy, 1, 1]))
     K[0,2] = cx
     K[1,2] = cy
-    return K
+    return K.astype(np.float64)
 
 def image_2_camera_coordinate(coordinates: np.array, depths: np.array, K: np.array) -> np.array:
     # TODO: whats the shape of the pixels (maybe transpose coordinates_h)
     coordinates_h = np.pad(coordinates,[(0,0),(0,1)], mode='constant', constant_values=1) # homogenize
     return np.linalg.inv(K) @ coordinates_h.T * depths
+
+@njit
+def mult_along_axis(A, B, axis):
+    if A.shape[axis] != B.size:
+        raise ValueError("Length of 'A' along the given axis must be the same as B.size")
+
+    shape = np.swapaxes(A, A.ndim-1, axis).shape
+    B_brc = np.broadcast_to(B, shape)
+    B_brc = np.swapaxes(B_brc, A.ndim-1, axis)
+    return A * B_brc

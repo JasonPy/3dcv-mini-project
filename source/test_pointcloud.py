@@ -9,25 +9,28 @@ from data_loader import DataLoader
 #         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
 
 DATA_PATH = '../data'
-SCENE = 'stairs'
+SCENE = 'chess'
 
-NUM_IMAGES = 5
+NUM_IMAGES = 50
 NUM_SAMPLES_PER_IMAGE = 50000
 
 loader = DataLoader(DATA_PATH)
-image_indices = np.arange(loader.get_dataset_length(SCENE))
-images_data = loader.load_dataset(SCENE, np.random.choice(image_indices, NUM_IMAGES))
+# image_indices = np.random.choice(np.arange(loader.get_dataset_length(SCENE)), NUM_IMAGES)
+image_indices = [20, 80]
+images_data = loader.load_dataset(SCENE, image_indices)
 sample_points = loader.sample_from_data_set(images_data, NUM_SAMPLES_PER_IMAGE)
 
 np_point_cloud = sample_points[1]
 o3d_point_cloud = open3d.utility.Vector3dVector(np_point_cloud)
+
+print(np_point_cloud)
 
 pcd = open3d.geometry.PointCloud()
 pcd.points = o3d_point_cloud
 open3d.visualization.draw_geometries([pcd],
                                   zoom=0.3412,
                                   front=[0.4257, -0.2125, -0.8795],
-                                  lookat=[2.6172, 2.0475, 1.532],
+                                  lookat=[0, 0, 0],
                                   up=[-0.0694, -0.9768, 0.2024])
 
 

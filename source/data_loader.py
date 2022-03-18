@@ -88,6 +88,7 @@ class DataLoader:
 
         for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples', dynamic_ncols = True, leave = False):
             (p_s, w_s) = generate_data_samples(images_data, i, num_samples)
+            num_samples = len(p_s)
             
             p_s_tot[i*num_samples:(i+1)*num_samples] = p_s
             w_s_tot[i*num_samples:(i+1)*num_samples] = w_s
