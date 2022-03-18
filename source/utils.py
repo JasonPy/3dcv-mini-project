@@ -72,10 +72,9 @@ def get_mode(arr: np.array):
 def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 240)) -> np.array:
     fx, fy = focal_length
     cx, cy = principle_point
-
     K = np.diag(np.array([fx, fy, 1, 1]))
-    K[0,2] = cx
-    K[1,2] = cy
+    K[0, 2] = cx
+    K[1 ,2] = cy
     return K.astype(np.float64)
 
 def image_2_camera_coordinate(coordinates: np.array, depths: np.array, K: np.array) -> np.array:

@@ -59,11 +59,11 @@ class DataLoader:
         for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data', dynamic_ncols = True, leave = False):
             if file_path.endswith(".color.png"):  
                 image = np.array(Image.open(file_path))
-                data_rgb.append(image)
+                data_rgb.append(np.swapaxes(image, 0, 1))
 
             if file_path.endswith(".depth.png"):
                 depth = np.array(Image.open(file_path))
-                data_d.append(depth)
+                data_d.append(depth.T)
             
             if file_path.endswith(".pose.txt"):
                 pose = np.loadtxt(file_path)

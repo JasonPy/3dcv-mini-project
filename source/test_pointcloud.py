@@ -11,19 +11,19 @@ from data_loader import DataLoader
 DATA_PATH = '../data'
 SCENE = 'chess'
 
-NUM_IMAGES = 50
-NUM_SAMPLES_PER_IMAGE = 50000
+NUM_IMAGES = 100
+NUM_SAMPLES_PER_IMAGE = 5000
 
 loader = DataLoader(DATA_PATH)
-# image_indices = np.random.choice(np.arange(loader.get_dataset_length(SCENE)), NUM_IMAGES)
-image_indices = [20, 80]
+image_indices = np.random.choice(np.arange(loader.get_dataset_length(SCENE)), NUM_IMAGES)
+# image_indices = [20, 80]
 images_data = loader.load_dataset(SCENE, image_indices)
 sample_points = loader.sample_from_data_set(images_data, NUM_SAMPLES_PER_IMAGE)
 
 np_point_cloud = sample_points[1]
 o3d_point_cloud = open3d.utility.Vector3dVector(np_point_cloud)
 
-print(np_point_cloud)
+# print(np_point_cloud)
 
 pcd = open3d.geometry.PointCloud()
 pcd.points = o3d_point_cloud

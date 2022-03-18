@@ -73,36 +73,37 @@ def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_
     elif feature_type is FeatureType.DA_RGB_DEPTH:
         raise NotImplementedError()
 
-# @njit
+@njit
 def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index: int, num_samples: int) -> np.array:
     """
     Draw random coordinates from the image and calculate corresponding
     3d points in image coordinates and word coordinates (using camera pose)      
     """
     m, n = image_data[1].shape[1:]
-    coordinate_range = np.arange(n * m, dtype=np.uint16)
+    coordinate_range = np.arange(n * m, dtype=np.int32)
     x_y_s = np.random.choice(coordinate_range, num_samples, replace=True)
-    x_s = x_y_s // m
-    y_s = x_y_s % m
+    x_s = x_y_s // n
+    y_s = x_y_s % n
+
     idx_s = np.full(num_samples, index, dtype=np.int16)
     p_s = np.stack((idx_s, x_s, y_s)).T
     depths = array_for_indices_3d(image_data[1], p_s)
     
     # Pad with 1 to work in homogeneous coordinates
     hom_camera_coordinates = (
-        x_s * depths,
-        y_s * depths,
-        depths,
+        x_s * depths / 1000,
+        y_s * depths / 1000,
+        depths / 1000,
         np.full(num_samples, 1, dtype=np.int16))
     p_hom_d_s = np.stack(hom_camera_coordinates).T.astype(np.float64)
 
-    intrinsic_matrix = get_intrinsic_camera_matrix()
+    intrinsic_matrix_inv = np.linalg.inv(get_intrinsic_camera_matrix())
     pose_matrix = image_data[2][index]
-    complete_matrix = np.linalg.inv(intrinsic_matrix @ pose_matrix)
 
     m_s = np.zeros((num_samples, 3), dtype=np.float64)
     for i, p_hom_d in enumerate(p_hom_d_s):
-        m_s[i] = (complete_matrix @ p_hom_d)[:-1].astype(np.float64)
+        p_hom_d = np.ascontiguousarray(p_hom_d)
+        m_s[i] = (pose_matrix @ (intrinsic_matrix_inv @ p_hom_d))[:-1].astype(np.float64)
 
     valid_depths_mask = depths != 65535
     return p_s[valid_depths_mask], m_s[valid_depths_mask]
