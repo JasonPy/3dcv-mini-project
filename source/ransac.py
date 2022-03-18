@@ -68,10 +68,10 @@ def energy_function(predicted_positions, pixel, camera_hypothesis):
         pixel (_type_): 3d position, camera space
         camera_hypothesis (_type_): _description_
     """
-    top_hat_error_width = 100
+    top_hat_error_width = 0.1
     print(camera_hypothesis.shape, pixel.shape)
     min_distance = np.min(np.linalg.norm(predicted_positions - (np.matmul(camera_hypothesis, pixel).T)))
-    return int(~(min_distance > -1 * top_hat_error_width / 2 and min_distance < top_hat_error_width / 2))
+    return int(~(min_distance < top_hat_error_width))
  
 
 def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
@@ -88,7 +88,6 @@ def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
     
     #initialize k camera hypotheses
     hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple)
-    print('////////////////////////////////////////////////')
 
     
     energies = np.zeros(k)
@@ -104,6 +103,7 @@ def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
         #remove invalid modes
         mask = np.isfinite(modes)
         modes = np.reshape(modes[mask], (int(modes[mask].shape[0] / 3), 3))
+        # TODO: check if all modes are - infinty
         pixel_batch = np.reshape(pixel_batch[mask], (int(pixel_batch[mask].shape[0] / 3), 3))
         
         pixel_inliers = {}
@@ -144,6 +144,7 @@ def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
             print("#########################################")
             print(pixels)
             print(len(pixel_inliers[hypothesis_index]))
+            
             modes = forest.evaluate(pixels, data_tuple)
             
             depths = image[pixels[:, 1], pixels[:, 2], 3]
