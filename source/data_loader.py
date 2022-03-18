@@ -56,7 +56,7 @@ class DataLoader:
         data_d = []
         data_pose = []
 
-        for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data'):
+        for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data', dynamic_ncols = True, leave = False):
             if file_path.endswith(".color.png"):  
                 image = np.array(Image.open(file_path))
                 data_rgb.append(image)
@@ -86,7 +86,7 @@ class DataLoader:
         p_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.int16)
         w_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.float32)
 
-        for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples'):
+        for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples', dynamic_ncols = True, leave = False):
             (p_s, w_s) = generate_data_samples(images_data, i, num_samples)
             
             p_s_tot[i*num_samples:(i+1)*num_samples] = p_s

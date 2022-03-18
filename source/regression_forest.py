@@ -1,8 +1,9 @@
+from multiprocessing.dummy import JoinableQueue
 from typing import Callable
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, Lock
 from typing import Tuple
 
-from numba import njit
+from numba import njit, jit, prange, types
 import numpy as np
 from numpy.random import choice, uniform
 from tqdm import tqdm
@@ -17,13 +18,13 @@ from data_loader import DataLoader
 def param_sampler(num_samples: int) -> np.array:
     rgb_coords = np.array([0, 1, 2])
     tau = np.zeros(num_samples)
-    delta1x = uniform(-130 * 100, 130 * 100, num_samples)
-    delta1y = uniform(-130 * 100, 130 * 100, num_samples)
-    delta2x = uniform(-130 * 100, 130 * 100, num_samples)
-    delta2y = uniform(-130 * 100, 130 * 100, num_samples)
+    delta1x = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta1y = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta2x = uniform(-130 * 1000, 130 * 1000, num_samples)
+    delta2y = uniform(-130 * 1000, 130 * 1000, num_samples)
     c1 = choice(rgb_coords, num_samples, replace=True)
     c2 = choice(rgb_coords, num_samples, replace=True)
-    return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T
+    return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T.astype(np.float64)
 
 @njit
 def objective_reduction_in_variance (
@@ -55,13 +56,119 @@ def objective_reduction_in_variance (
 
     return vector_3d_array_variance(w_complete) - fac_left * var_left - fac_right * var_right
 
-@njit
-def regression_tree_worker_score(image_data, p_s, w_s, param_sample, objective_function, feature_type):
-    mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_sample, feature_type)
-    w_s_valid = w_s[mask_valid]
-    set_left, set_right = split_set(w_s_valid, mask_split)
-    score = objective_function(w_complete = w_s_valid, w_left = set_left, w_right = set_right)
-    return score
+@jit(nopython = True, parallel = True)
+def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_function, feature_type):
+    num_samples = len(param_samples)
+    scores = np.full(num_samples, 0, dtype=np.float64)
+    for i in prange(num_samples):
+        mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_samples[i], feature_type)
+        w_s_valid = w_s[mask_valid]
+        set_left, set_right = split_set(w_s_valid, mask_split)
+        scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
+    return scores
+
+class TreeWorkerResult:
+    def __init__(self,
+        node_id: str,
+        is_leaf: bool,
+        progress: int = 0,
+        response: np.array = None,
+        params: np.array = None,
+        set_left: Tuple[np.array, np.array] = None,
+        set_right: Tuple[np.array, np.array] = None,
+        lengths: Tuple[int, int, int, int] = None,
+        timings: Tuple[float, float] = None):
+        self.node_id = node_id
+        self.is_leaf = is_leaf
+        self.progress = progress
+        self.response = response
+        self.params = params
+        self.set_left = set_left
+        self.set_right = set_right
+        self.lengths = lengths
+        self.timings = timings
+
+def regression_tree_worker(image_data, work_data, worker_params):
+    # Extract work data
+    (tree) = worker_params
+    node_id, depth, p_s, w_s = work_data
+
+    # Auxiliary local variables
+    tree_levels_below = tree.max_depth - depth - 1
+    len_data = len(p_s)
+    is_leaf_node = False
+    progress = 0
+    # _ms_start = millis()
+
+    # Check if this node should not be trained
+    if len_data == 1 or depth == tree.max_depth:
+        is_leaf_node = True
+        progress += len_data
+        response = get_mode(w_s)
+        result = TreeWorkerResult(node_id = node_id, is_leaf =  True, response = response)
+
+    if not is_leaf_node:
+        # Generate parameter samples
+        param_samples = param_sampler(tree.num_param_samples)
+        scores = calculate_scores_for_params(
+            image_data = image_data,
+            p_s = p_s,
+            w_s = w_s,
+            param_samples = param_samples,
+            objective_function = tree.objective_function,
+            feature_type = tree.feature_type)
+        # _delta_get_features = millis() - _ms_start
+        
+        # Find best parameter and calculate split (again, I know)
+        max_score_index = np.argmax(scores)
+        best_params = param_samples[max_score_index]
+        mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
+
+        # Split the input data        
+        w_s_valid = w_s[mask_valid]
+        w_s_left, w_s_right = split_set(w_s_valid, mask_split)
+        p_s_valid = p_s[mask_valid]
+        p_s_left, p_s_right = split_set(p_s_valid, mask_split)
+
+        # Calculate lengths
+        len_invalid = np.sum(~mask_valid)
+        len_left = np.sum(mask_split)
+        len_right = np.sum(~mask_split)
+
+        # Report training progress
+        # _delta_split = millis() - _delta_get_features - _ms_start
+        progress += len_data
+
+        if len_invalid == len_data:
+            # All samples are invalid. Edge case; not observed so far
+            print(f'Error in node {node_id}: All samples considered invalid')
+            result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = w_s[0])
+
+        elif len_right == 0 or len_left == 0:
+            # All samples are split to one side -> this should be a leaf node
+            is_leaf_node = True
+            response = get_mode(w_s_valid)
+            result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = response)
+
+        else:
+            # Report training progress on invalid nodes, trigger next node training
+            progress += len_invalid * tree_levels_below
+            result = TreeWorkerResult(
+                node_id = node_id,
+                is_leaf = False,
+                params = best_params,
+                set_left = (p_s_left, w_s_left),
+                set_right = (p_s_right, w_s_right))#,
+                # lengths = (len_data, len_invalid, len_left, len_right),
+                # timings = (_delta_get_features, _delta_split))
+
+    if is_leaf_node:
+        # Report training progress ("skipped" calculations since this is a leaf node)
+        progress += len_data * tree_levels_below
+
+    result.progress = progress
+    return result
+
 
 """
 TOOD: Idea (by Vincenco):
@@ -71,7 +178,7 @@ to access the information gain at a node given a certain parameter set
 """
 
 class Node:
-    def __init__(self, feature_type: FeatureType, initial_params = any):
+    def __init__(self, node_id: str, depth: int = 0):
         """
         Create a new node with a given feature_function and initial parameters
 
@@ -83,19 +190,21 @@ class Node:
             The initial parameters for this node. Used for loading
             trained tree
         """
-        self.feature_type = feature_type
-        
-        self.params = initial_params
-        self.best_score = -np.inf
-        self.leared_response = None
-        
-        self.left_child = None
-        self.right_child = None
+
+        self.id = node_id
+        self.depth = depth
+        self.params = np.array([0], dtype=np.float64)
+        self.response = np.array([.0, .0, .0])
+        self.node_id_left = ''
+        self.node_id_right = ''
 
     def is_leaf(self):
-        return (self.left_child is None) and (self.right_child is None)
+        return (self.node_id_left == '') and (self.node_id_right == '')
 
-    def evaluate(self, samples: np.array, feature_type: FeatureType, processing_pool: ProcessingPool):
+    def evaluate(self,
+        images_data: Tuple[np.array, np.array, np.array],
+        samples: np.array,
+        tree: 'RegressionTree'):
         """
         Evaluate the tree recursively starting at this node.
 
@@ -114,225 +223,91 @@ class Node:
             return samples
 
         if self.is_leaf():
-            return np.full((len(samples), self.leared_response.shape[0]), self.leared_response)
+            return np.full((len(samples), self.response.shape[0]), self.response)
         else:
             outputs = np.full((len(samples), 3), -np.inf)
-            image_data, close_shm = processing_pool.get_image_data()
-            mask_valid, mask_split = get_features_for_samples(image_data, samples, self.params, feature_type)
-            close_shm()
-            image_data = None
+            mask_valid, mask_split = get_features_for_samples(images_data, samples, self.params, tree.feature_type)
             samples_valid, _ = split_set(samples, mask_valid)
             split_left, split_right = split_set(samples_valid, mask_split)
             
-            response_left = self.left_child.evaluate(split_left, feature_type, processing_pool)
-            response_right = self.right_child.evaluate(split_right, feature_type, processing_pool)
+            left_child = tree.nodes[self.node_id_left]
+            right_child = tree.nodes[self.node_id_right]
+
+            response_left = left_child.evaluate(images_data, split_left, tree)
+            response_right = right_child.evaluate(images_data, split_right, tree)
             outputs_masked = outputs[mask_valid].copy()
             outputs_masked[mask_split] = response_left
             outputs_masked[~mask_split] = response_right
             outputs[mask_valid] = outputs_masked
             return outputs
 
-    def train(self, 
-        depth: int,
-        data: Tuple[np.array, np.array],
-        processing_pool: ProcessingPool,
-        param_sampler: Callable[[int], np.array],
-        num_param_samples: int,
-        max_depth: int,
-        _tqdm: tqdm,
-        label: str = '',
-        reset: bool = False
-        ) -> None:
-        """
-        Train this node on the data using the objective_function
-
-        Parameters
-        ----------
-        depth: int
-            The current tree depth. Used for constraint on tree depth
-
-        max_depth: int
-            The maximum allowed depth of the tree. Use mode fitting if reached
-
-        data: DataHolder
-            The data used to train the node. Expected format:
-            data = [[input_feature_0, ..1, ...], [target_response_0, ..1, ...]]
-
-        num_param_samples: int
-            The number of parameter samples to evaluate
-
-        reset: bool
-            Reset the maximum score which had been achieved so far
-
-        objective_function: Callable
-            The objective function to min/maximise. It rates the quality of the
-            split achived by this node (for a certian set of params).
-
-            set_complete: DataHolder
-                The right set after this node's split (formatted like data)
-
-            set_left: np.array, set_right: np.array
-                The left set after this node's split (formatted like data)
-                
-            Returns
-            -------
-            float judging the quality of this split
-        
-        param_sampler: Callable
-            The function used to sample from the parameter space for the node
-            split parameters
-
-            number: int
-                The number of parameter samples to generate
-            Returns
-            -------
-            np.array of the paramters
-
-        """
-        if reset:
-            self.best_score = -np.inf
-            self.leared_response = None
-            self.left_child = None
-            self.right_child = None
-
-        p_s, w_s = data
-        _len_data = len(p_s)
-        if _len_data == 0:
-            return
-
-        is_leaf_node = False
-        if depth == max_depth or _len_data == 1:
-            # This should be a leaf node
-            # We need to find the "mode"
-            is_leaf_node = True
-            _tqdm.update(_len_data)
-            self.leared_response = get_mode(w_s)
-            self.left_child = None
-            self.right_child = None
-        else:
-            self.left_child = Node(self.feature_type, None) if self.left_child == None else self.left_child
-            self.right_child = Node(self.feature_type, None) if self.right_child == None else self.right_child
- 
-        if not is_leaf_node:
-            _ms_start = millis()
-
-            param_samples = param_sampler(num_param_samples)
-            results = []
-
-            if (_len_data < 350) or False:
-                image_data, close_shm = processing_pool.get_image_data()
-                objective_function, feature_type = processing_pool.get_worker_params()
-                for param_sample in param_samples:
-                    results.append(regression_tree_worker_score(
-                        image_data = image_data,
-                        p_s = p_s,
-                        w_s = w_s,
-                        param_sample = param_sample,
-                        objective_function = objective_function,
-                        feature_type = feature_type
-                    ))
-                image_data = None
-                close_shm()
-            else:
-                work_datas = [(p_s, w_s, param_sample) for param_sample in param_samples]
-                results = processing_pool.process_work(work_datas)
-
-            _delta_get_features = millis() - _ms_start
-
-            index_best_sample = np.argmax(results)
-            score = results[index_best_sample]
-            self.params = param_samples[index_best_sample]
-            self.best_score = score
-
-            image_data, close_shm = processing_pool.get_image_data()
-            objective_function, feature_type = processing_pool.get_worker_params()
-            mask_valid, mask_split = get_features_for_samples(image_data, p_s, self.params, feature_type)
-            image_data = None
-            close_shm()
-
-            best_len_invalid = sum(~mask_valid)
-
-            best_p_s_valid, _ = split_set(p_s, mask_valid)
-            best_w_s_valid, _ = split_set(w_s, mask_valid)
-            best_p_s_left, best_p_s_right = split_set(best_p_s_valid, mask_split)
-            best_w_s_left, best_w_s_right = split_set(best_w_s_valid, mask_split)
-
-            results = None
-            param_samples = None
-            _tqdm.update(_len_data)
-            _len_left = len(best_p_s_left)
-            _len_right = len(best_p_s_right)
-
-            _delta_split_and_score = millis() - _delta_get_features - _ms_start
-            _str_split = f'| {_len_data:10} in | {best_len_invalid:8} inval | {_len_left:8} left | {_len_right:8} right | {_delta_split_and_score:4.0F}ms split |'
-            _str_features = f'{_len_data * num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
-            kilo_it_per_sec_str = f'{(_len_data * num_param_samples) / (_delta_get_features + _delta_split_and_score):.1F}'
-            write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {label:16} id |')
-
-            if best_len_invalid == _len_data:
-                self.left_child = None
-                self.right_child = None
-                self.leared_response = get_mode(best_w_s_valid)
-                is_leaf_node = True
-            elif _len_left == 0:
-                self.left_child = None
-                self.right_child = None
-                self.leared_response = get_mode(best_w_s_valid)
-                is_leaf_node = True
-            elif _len_right == 0:
-                self.left_child = None
-                self.right_child = None
-                self.leared_response = get_mode(best_w_s_valid)
-                is_leaf_node = True
-            else:
-                p_s = None
-                w_s = None
-                _tqdm.update(best_len_invalid * (max_depth - depth - 1))
-                self.left_child.train(
-                    depth = depth + 1,
-                    data = (best_p_s_left, best_w_s_left),
-                    processing_pool = processing_pool,
-                    param_sampler = param_sampler,
-                    num_param_samples = num_param_samples,
-                    max_depth = max_depth,
-                    _tqdm = _tqdm,
-                    label = f'{label}0',
-                    reset = reset)
-                self.right_child.train(
-                    depth = depth + 1,
-                    data = (best_p_s_right, best_w_s_right),
-                    processing_pool = processing_pool,
-                    param_sampler = param_sampler,
-                    num_param_samples = num_param_samples,
-                    max_depth = max_depth,
-                    _tqdm = _tqdm,
-                    label = f'{label}1',
-                    reset = reset)
-
-        if is_leaf_node:
-            _tqdm.update(_len_data * (max_depth - depth - 1))
-
 class RegressionTree:
     def __init__(self,
         max_depth: int,
         feature_type: FeatureType,
         param_sampler: Callable[[int], np.array],
+        num_param_samples: int,
         objective_function: Callable[[np.array, np.array, np.array], float]):
 
-        self.root = Node(feature_type=feature_type)
+        self.nodes = dict()
         self.is_trained = False
         self.max_depth = max_depth
         self.feature_type = feature_type
         self.param_sampler = param_sampler
+        self.num_param_samples = num_param_samples
         self.objective_function = objective_function
 
+    def add_node(self, node: Node):
+        self.nodes[node.id] = node
+
+    def handle_node_result(self, result: TreeWorkerResult):        
+        if not result.node_id in self.nodes:
+            raise Exception(f'Could not find node with id {result.node_id}')
+
+        self.progress += result.progress
+        self.tqdm.update(result.progress)
+
+        node = self.nodes[result.node_id]
+        if result.is_leaf:
+            node.response = result.response
+        else:
+            # Create new nodes
+            node_left = Node(node.id + '0', node.depth + 1)
+            node_right = Node(node.id + '1', node.depth + 1)
+            self.add_node(node_left)
+            self.add_node(node_right)
+
+            # Save this node's training result
+            node.params = result.params
+            node.node_id_left = node_left.id
+            node.node_id_right = node_right.id
+            
+            # Enqueue the new nodes for training
+            p_s_left, w_s_left = result.set_left
+            p_s_right, w_s_right = result.set_right
+            train_left_work_data = (node_left.id, node_left.depth, p_s_left, w_s_left)
+            train_right_work_data = (node_right.id, node_right.depth, p_s_right, w_s_right)
+            self.processing_pool.enqueue_work(train_left_work_data)
+            self.processing_pool.enqueue_work(train_right_work_data)
+
+            # len_data, len_invalid, len_left, len_right = result.lengths
+            # _delta_get_features, _delta_split = result.timings
+            # _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
+            # _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
+            # kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
+            # tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
+
+        # I don't really know if this is necessary. I want pointers :(
+        self.nodes[result.node_id] = node
+            
     def evaulate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
         if not self.is_trained:
             raise Exception('Error: Tree is not trained yet!')
 
-        processing_pool = ProcessingPool(images_data)
-        results = self.root.evaluate(samples, self.feature_type, processing_pool)
-        processing_pool.stop_workers()
+        results = self.nodes['0'].evaluate(
+            images_data = images_data,
+            samples = samples, 
+            tree = self)
         return results
 
     def train(self, 
@@ -340,9 +315,7 @@ class RegressionTree:
         scene_name: str,
         train_indices: np.array,
         num_samples_per_images: int,
-        num_param_samples: int,
-        reset: bool = False,
-        num_workers: int = cpu_count()):
+        num_workers: int):
         """
         Train this tree with the list of FeatureExtractors (images) given.
         
@@ -355,42 +328,61 @@ class RegressionTree:
         reset: bool = False
             Reset tree
         """
-
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
 
-        processing_pool = ProcessingPool(
-            images_data = images_data,
-            num_workers = num_workers,
-            worker_function = regression_tree_worker_score,
-            worker_params = (self.objective_function, self.feature_type))
-        
-        images_data = None # Free this copy
-        try:
-            tqdm.write(f'Training forest with {len(data_samples[0])} samples')
-        
-            _tqdm = tqdm(
-                iterable = None,
-                desc = 'Training tree  ',
-                total = len(data_samples[0]) * self.max_depth,
-                ascii = True
-            )
+        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples')
+        self.total_iterations = len(data_samples[0]) * self.max_depth
+        self.progress = 0
 
-            self.root.train(
-                depth = 0,
-                data = data_samples,
-                processing_pool = processing_pool,
-                param_sampler = self.param_sampler,
-                num_param_samples = num_param_samples,
-                max_depth = self.max_depth,
-                _tqdm = _tqdm,
-                reset = reset)
-                
-            self.is_trained = True
-        except KeyboardInterrupt:
-            tqdm.write(f'Stopping training due to KeyboardInterrupt')
-        finally:
-            processing_pool.stop_workers()
+        with tqdm(
+            iterable = None,
+            desc = 'Training tree  ',
+            smoothing = 0.05,
+            dynamic_ncols = True,
+            unit_scale = True,
+            mininterval = 0.2,
+            maxinterval = 2,
+            total = self.total_iterations,
+            ascii = True) as tqdm_progress:
+
+            self.tqdm = tqdm_progress
+            self.processing_pool = ProcessingPool(
+                images_data = images_data,
+                num_workers = num_workers,
+                worker_function = regression_tree_worker,
+                worker_params = (self))
+            images_data = None # Free this copy
+            queue_work = self.processing_pool.queue_work
+            queue_result = self.processing_pool.queue_result
+
+            was_interruped = False
+
+            try:
+                root_node = Node('0')
+                self.add_node(root_node)
+                work_data = (root_node.id, root_node.depth, data_samples[0], data_samples[1])
+                self.processing_pool.enqueue_work(work_data)
+
+                while not (self.progress == self.total_iterations):
+                    self.handle_node_result(queue_result.get())
+                    queue_result.task_done()
+
+                tqdm.write('Training complete.')
+                queue_work.join()
+                tqdm.write('Work queue emptied.')
+                self.is_trained = True
+            except KeyboardInterrupt:
+                tqdm.write(f'Stopping training due to KeyboardInterrupt')
+                was_interruped = True
+            finally:
+                self.processing_pool.finish()
+
+                # Cleanup class attributes not to be serialized
+                self.processing_pool = None
+                self.tqdm = None
+                if was_interruped:
+                    raise KeyboardInterrupt()
 
 class RegressionForest:
     def __init__(self,
@@ -398,10 +390,18 @@ class RegressionForest:
         max_depth: int,
         feature_type: FeatureType,
         param_sampler: Callable[[int], np.array],
+        num_param_samples: int,
         objective_function: Callable[[np.array, np.array, np.array], float]):
+
         self.is_trained = False
-        self.trees = [RegressionTree(max_depth, feature_type, param_sampler, objective_function) for _ in range(num_trees)]
         self.num_trees = num_trees
+        self.num_param_samples = num_param_samples
+        self.trees = [RegressionTree(
+            max_depth = max_depth,
+            feature_type = feature_type,
+            param_sampler = param_sampler,
+            num_param_samples = num_param_samples,
+            objective_function = objective_function) for _ in range(num_trees)]
 
     def evaluate(self, samples: np.array, images_data: Tuple[np.array, np.array, np.array]):
         if not self.is_trained:
@@ -415,8 +415,6 @@ class RegressionForest:
         train_image_indices: np.array,
         num_images_per_tree: int,
         num_samples_per_image: int,
-        num_param_samples: int,
-        reset: bool = False,
         num_workers: int = cpu_count()):
         """
         Train this forest with the list of data samples given. The complete list of samples
@@ -434,18 +432,14 @@ class RegressionForest:
         """
         loader = DataLoader(data_dir)
 
-        for tree in tqdm(self.trees, ascii = True, desc = f'Training forest'):
-            train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
-            tree.train(
-                data_loader = loader,
-                scene_name = scene_name,
-                train_indices = train_indices,
-                num_samples_per_images = num_samples_per_image,
-                num_param_samples = num_param_samples,
-                reset = reset,
-                num_workers = num_workers)
+        try:
+            with tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True) as trees:
+                for tree in trees:
+                    train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
+                    tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
 
-        self.is_trained = True
-        self.train_image_indices = train_image_indices
-        self.scene_name = scene_name
-            
+                self.is_trained = True
+                self.train_image_indices = train_image_indices
+                self.scene_name = scene_name
+        except KeyboardInterrupt:
+            pass            
