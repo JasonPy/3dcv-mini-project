@@ -1,5 +1,4 @@
 # Output
-out*
 !./out/.gitkeep
 
 # Byte-compiled / optimized / DLL files
@@ -171,4 +170,4 @@ data/redkitchen/*
 data/stairs/*
 data/unzip_dataset.sh
 
-*.pkl
+3dcv-mp/*
