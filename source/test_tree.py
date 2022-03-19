@@ -1,4 +1,3 @@
-import pickle
 import numpy as np
 import os
 from sklearn import model_selection
@@ -7,10 +6,7 @@ from datetime import datetime
 from regression_forest import RegressionForest, objective_reduction_in_variance, param_sampler
 from feature_extractor import FeatureType
 from data_loader import DataLoader
-
-def save_object(obj, filename):
-    with open(filename, 'wb') as outp:  # Overwrites any existing file.
-        pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
+from utils import save_object
 
 # BASE PARAMETERS
 TIMESTAMP = datetime.now()

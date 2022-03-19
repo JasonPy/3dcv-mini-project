@@ -1,13 +1,8 @@
-import pickle
 import numpy as np
 import open3d
 
 from data_loader import DataLoader
-from utils import millis
-
-def load_object(filename):
-    with open(filename, 'rb') as inp:
-        return pickle.load(inp)
+from utils import millis, load_object
 
 def draw_pointcloud(np_pointcloud):
     pcd = open3d.geometry.PointCloud()
@@ -51,7 +46,6 @@ start = millis()
 
 tree_predictions = forest.evaluate(p_s, images_data)
 print(f'Finished after {(millis() - start):5.1F}ms')
-
 
 # Extract predictions
 valid_predictions_tot = 0

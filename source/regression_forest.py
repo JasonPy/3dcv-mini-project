@@ -1,17 +1,15 @@
-from multiprocessing.dummy import JoinableQueue
 from typing import Callable
-from multiprocessing import cpu_count, Lock
+from multiprocessing import cpu_count
 from typing import Tuple
 
-from numba import njit, jit, prange, types
+from numba import njit, jit, prange
 import numpy as np
 from numpy.random import choice, uniform
 from tqdm import tqdm
-write = tqdm.write
 
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
-from utils import get_mode, millis, vector_3d_array_variance, split_set
+from utils import get_mode, vector_3d_array_variance, split_set
 from data_loader import DataLoader
 
 @njit
@@ -75,9 +73,9 @@ class TreeWorkerResult:
         response: np.array = None,
         params: np.array = None,
         set_left: Tuple[np.array, np.array] = None,
-        set_right: Tuple[np.array, np.array] = None,
-        lengths: Tuple[int, int, int, int] = None,
-        timings: Tuple[float, float] = None):
+        set_right: Tuple[np.array, np.array] = None):
+        # lengths: Tuple[int, int, int, int] = None,
+        # timings: Tuple[float, float] = None
         self.node_id = node_id
         self.is_leaf = is_leaf
         self.progress = progress
@@ -85,8 +83,8 @@ class TreeWorkerResult:
         self.params = params
         self.set_left = set_left
         self.set_right = set_right
-        self.lengths = lengths
-        self.timings = timings
+        # self.lengths = lengths
+        # self.timings = timings
 
 def regression_tree_worker(image_data, work_data, worker_params):
     # Extract work data

@@ -1,5 +1,6 @@
 import numpy as np
-from numba import njit, jit, objmode
+import pickle
+from numba import njit, objmode
 import time
 from typing import Tuple
 from sklearn.cluster import MeanShift
@@ -77,11 +78,6 @@ def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 24
     K[1 ,2] = cy
     return K.astype(np.float64)
 
-def image_2_camera_coordinate(coordinates: np.array, depths: np.array, K: np.array) -> np.array:
-    # TODO: whats the shape of the pixels (maybe transpose coordinates_h)
-    coordinates_h = np.pad(coordinates,[(0,0),(0,1)], mode='constant', constant_values=1) # homogenize
-    return np.linalg.inv(K) @ coordinates_h.T * depths
-
 @njit
 def mult_along_axis(A, B, axis):
     if A.shape[axis] != B.size:
@@ -91,3 +87,11 @@ def mult_along_axis(A, B, axis):
     B_brc = np.broadcast_to(B, shape)
     B_brc = np.swapaxes(B_brc, A.ndim-1, axis)
     return A * B_brc
+
+def load_object(filename):
+    with open(filename, 'rb') as inp:
+        return pickle.load(inp)
+
+def save_object(obj, filename):
+    with open(filename, 'wb') as outp:  # Overwrites any existing file.
+        pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
