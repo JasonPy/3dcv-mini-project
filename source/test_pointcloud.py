@@ -13,12 +13,14 @@ def draw_pointcloud(np_pointcloud):
                                     lookat=[0, 0, 0],
                                     up=[0, -1, 0.2])
 
-SCENE = 'redkitchen'
+SCENE = 'stairs'
 DATA_PATH = '../data'
 NUM_TEST_IMAGES = 1000
 NUM_SAMPLES_PER_IMAGE = 100
 
-params = load_object(f'params_{SCENE}.pkl')
+PREFIX = '../output/19-03-2022_20-01_stairs/'
+
+params = load_object(f'{PREFIX}params_{SCENE}.pkl')
 print(f'Loading forest trained on "{SCENE}"')
 
 [print(f'\t{key}: {params[key]}') for key in [
@@ -28,7 +30,7 @@ print(f'Loading forest trained on "{SCENE}"')
     'NUM_SAMPLES_PER_IMAGE',
     'NUM_PARAMETER_SAMPLES']]
 
-forest = load_object(f'trained_forest_{SCENE}.pkl')
+forest = load_object(f'{PREFIX}trained_forest_{SCENE}.pkl')
 loader = DataLoader(DATA_PATH)
 
 # Sample points from tests data
