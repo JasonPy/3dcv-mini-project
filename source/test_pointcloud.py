@@ -1,72 +1,75 @@
-# import pickle
+import pickle
 import numpy as np
 import open3d
 
 from data_loader import DataLoader
+from utils import millis
 
-# def save_object(obj, filename):
-#     with open(filename, 'wb') as outp:  # Overwrites any existing file.
-#         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
+def load_object(filename):
+    with open(filename, 'rb') as inp:
+        return pickle.load(inp)
 
+def draw_pointcloud(np_pointcloud):
+    pcd = open3d.geometry.PointCloud()
+    pcd.points = open3d.utility.Vector3dVector(np_pointcloud)
+    open3d.visualization.draw_geometries([pcd],
+                                    zoom=0.5,
+                                    front=[0.5, -0.2, -1],
+                                    lookat=[0, 0, 0],
+                                    up=[0, -1, 0.2])
+
+SCENE = 'redkitchen'
 DATA_PATH = '../data'
-SCENE = 'chess'
+NUM_TEST_IMAGES = 1000
+NUM_SAMPLES_PER_IMAGE = 100
 
-NUM_IMAGES = 100
-NUM_SAMPLES_PER_IMAGE = 5000
+params = load_object(f'params_{SCENE}.pkl')
+print(f'Loading forest trained on "{SCENE}"')
 
+[print(f'\t{key}: {params[key]}') for key in [
+    'TIMESTAMP',
+    'TREE_MAX_DEPTH',
+    'NUM_TRAIN_IMAGES_PER_TREE',
+    'NUM_SAMPLES_PER_IMAGE',
+    'NUM_PARAMETER_SAMPLES']]
+
+forest = load_object(f'trained_forest_{SCENE}.pkl')
 loader = DataLoader(DATA_PATH)
-image_indices = np.random.choice(np.arange(loader.get_dataset_length(SCENE)), NUM_IMAGES)
-# image_indices = [20, 80]
-images_data = loader.load_dataset(SCENE, image_indices)
-sample_points = loader.sample_from_data_set(images_data, NUM_SAMPLES_PER_IMAGE)
 
-np_point_cloud = sample_points[1]
-o3d_point_cloud = open3d.utility.Vector3dVector(np_point_cloud)
+# Sample points from tests data
+test_set_indices = params['TEST_INDICES']
+test_indices = np.random.choice(test_set_indices, NUM_TEST_IMAGES, replace = False)
+images_data = loader.load_dataset(SCENE, test_indices)
+p_s, w_s = loader.sample_from_data_set(
+    images_data = images_data,
+    num_samples = NUM_SAMPLES_PER_IMAGE)
 
-# print(np_point_cloud)
+# Evalulate tree
+num_samples = NUM_TEST_IMAGES * NUM_SAMPLES_PER_IMAGE
+print(f'Evaluating tree for {num_samples} samples')
+start = millis()
 
-pcd = open3d.geometry.PointCloud()
-pcd.points = o3d_point_cloud
-open3d.visualization.draw_geometries([pcd],
-                                  zoom=0.3412,
-                                  front=[0.4257, -0.2125, -0.8795],
-                                  lookat=[0, 0, 0],
-                                  up=[-0.0694, -0.9768, 0.2024])
-
+tree_predictions = forest.evaluate(p_s, images_data)
+print(f'Finished after {(millis() - start):5.1F}ms')
 
 
+# Extract predictions
+valid_predictions_tot = 0
+predictions = np.ndarray((num_samples * params['NUM_TREES'], 3), dtype=np.float64)
 
-# forest = RegressionForest(
-#     num_trees = NUM_TREES,
-#     max_depth = TREE_MAX_DEPTH,
-#     feature_type = FeatureType.DA_RGB,
-#     num_param_samples = NUM_PARAMETER_SAMPLES,
-#     param_sampler = param_sampler,
-#     objective_function = objective_reduction_in_variance)
+for i, pred_s in enumerate(tree_predictions):
+    valid_mask = ~np.any(pred_s == -np.inf, axis=1)
+    w_s_valid = w_s[valid_mask]
+    pred_s_valid = pred_s[valid_mask]
 
-# forest.train(
-#     data_dir = DATA_PATH,
-#     scene_name = SCENE,
-#     train_image_indices = train_indices,
-#     num_images_per_tree = NUM_TRAIN_IMAGES_PER_TREE,
-#     num_samples_per_image = NUM_SAMPLES_PER_IMAGE)
+    valid_predictions = np.sum(valid_mask)
+    errors = np.sum(np.abs(w_s_valid - pred_s_valid.copy()), axis=1)
+    print(f'Tree {i}:\n\t{(100 * valid_predictions / num_samples):2.1F}% valid predictions')
+    print(f'\tAverage deviation: ({np.mean(errors):1.3E} +- {np.var(errors):1.3E})m')
 
-# # save used parameters
-# params = {
-#   "TIMESTAMP": TIMESTAMP,
-#   "SCENE": SCENE,
-#   "TEST_SIZE": TEST_SIZE,
-#   "NUM_TREES": NUM_TREES,
-#   "TREE_MAX_DEPTH": TREE_MAX_DEPTH,
-#   "NUM_TRAIN_IMAGES_PER_TREE": NUM_TRAIN_IMAGES_PER_TREE,
-#   "NUM_SAMPLES_PER_IMAGE": NUM_SAMPLES_PER_IMAGE,
-#   "NUM_PARAMETER_SAMPLES": NUM_PARAMETER_SAMPLES,
-#   "SPLIT_MASK": [train_indices, test_indices],
-# }
+    predictions[valid_predictions_tot:valid_predictions_tot+valid_predictions] = pred_s_valid
+    valid_predictions_tot += valid_predictions
 
-# if forest.is_trained:
-#     save_object(forest, f'trained_forest_{SCENE}.pkl')
-#     save_object(params, f'params_{SCENE}.pkl')
-#     print(f'Done training forest of scene {SCENE}.')
-# else:
-#     print(f'Training interrupted!')
+predictions = predictions[:valid_predictions_tot]
+print(f'Generating point cloud')
+draw_pointcloud(predictions)
