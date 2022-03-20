@@ -95,8 +95,8 @@ is provided, which allows to validate the estimated camera pose matrix for a giv
 The datasets are split randonly into train and test according to~\cite[Table 1]{shotton2013}. 
 
 % WIP FALK:
-Our data consists of a number of samples $\{(\textbf{p}_i, \textbf{w}_i)\}$ with
-$\textbf{p}_i = (x_l, y_l)_i$ and $\textbf{w}_i = (x_s, y_s, z_s)_i$ where the subscripts
+Our data consists of a number of samples $\{(\boldsymbol{p}_i, \boldsymbol{w}_i)\}$ with
+$\boldsymbol{p}_i = (x_l, y_l)_i$ and $\boldsymbol{w}_i = (x_s, y_s, z_s)_i$ where the subscripts
 $l$ and $s$ denote image pixel coordinates and scene coordinates respectively.\\
 
 \subsection{Regression Forest}
@@ -113,29 +113,29 @@ A regression forest consists of a number $N$ of regression trees, which each con
 of root node and it's children. We consider the special case of binary decision trees
 where each node (unless it is a leaf node) has a left and a right child. Each node $n$
 stores a set of parameters $\theta_n$ which are used in the calculation of a
-feature response function $f_{\theta}(\textbf{p}) \in \{1, 0\}$ which determines if the input
-data point \textbf{p} is branched to the left or right child node. To every leaf node
-(i.e. a node without children) we assign a response value $\textbf{w}_n$ representing
-the tree's prediction for a data point \textbf{p} that has reached this node. In our
-specific application the input data points \textbf{p} are 2D pixel coordinates and the
-responses \textbf{w} are 3D world coordinates.\\
+feature response function $f_{\theta}(\boldsymbol{p}) \in \{1, 0\}$ which determines if the input
+data point $\boldsymbol{p}$ is branched to the left or right child node. To every leaf node
+(i.e. a node without children) we assign a response value $\boldsymbol{w}_n$ representing
+the tree's prediction for a data point $\boldsymbol{p}$ that has reached this node. In our
+specific application the input data points $\boldsymbol{p}$ are 2D pixel coordinates and the
+responses $\boldsymbol{w}$ are 3D world coordinates.\\
 
 The process of training the tree involves finding the set of parameters
 $\{\theta_n | \, \forall \, \text{nodes} \, n\}$ which results in the best predictions
-for previously unseen input data points \textbf{p}. However, this final goal cannot
+for previously unseen input data points $\boldsymbol{p}$. However, this final goal cannot
 be optimized towards directly during training, as this would entail optimization in the
 very large space of all possible parameters for all tree-nodes simultaneously. Therefore
 it is much more efficient to optimize the parameters one node at a time using a
 proxy-objective $Q(S_{\text{tot}},\, S_{\text{left}}(\theta),\, S_{\text{right}}(\theta))$
 which ideally leads to a similar result.\\
 
-Let $S_{\text{tot},n} = \{ (\textbf{p}_i, \textbf{w}_i) \, | \, i \in |S_n|\}$ denote the
+Let $S_{\text{tot},n} = \{ (\boldsymbol{p}_i, \boldsymbol{w}_i) \, | \, i \in |S_n|\}$ denote the
 input data and target response for a given node $n$. According to its parameters the
 node splits this set into the subsets
 \begin{equation}
 \begin{split}
-	S_{\text{left},n}(\theta_n) = \{(\textbf{p}_i, \textbf{w}_i) \,|\, f_{\theta_n}(\textbf{p}_i) = 0\} \\
-	S_{\text{right},n}(\theta_n) = \{(\textbf{p}_i, \textbf{w}_i) \,|\, f_{\theta_n}(\textbf{p}_i) = 1\}
+	S_{\text{left},n}(\theta_n) = \{(\boldsymbol{p}_i, \boldsymbol{w}_i) \,|\, f_{\theta_n}(\boldsymbol{p}_i) = 0\} \\
+	S_{\text{right},n}(\theta_n) = \{(\boldsymbol{p}_i, \boldsymbol{w}_i) \,|\, f_{\theta_n}(\boldsymbol{p}_i) = 1\}
 \end{split}
 \end{equation}
 corresponding to left and right child node respectively. The objective function $Q$ is
@@ -144,24 +144,45 @@ this node.\\
 
 The objective function used here optimizes for a reduction in variance of the target 
 responses (i.e. "wants the tree to group together points similar scene coordinates").
-Defining $W_n = \{ \textbf{w}_i \, | \, (\textbf{p}_i, \textbf{w}_i) \in S_n \}$ this
-objective can be mathematically expressed as
+Defining $W_n = \{ \boldsymbol{w}_i \, | \, (\boldsymbol{p}_i, \boldsymbol{w}_i) \in S_n \}$ this
+objective can be mathematically expressed as:
 
-\begin{equation}
+\begin{multline}
 	Q(W_\text{tot}, \theta) =
-		\text{Var}(W_\text{tot}) - \sum_{d\,\in\{\text{left,\,right}\}}
-			\dfrac{|W_d(\theta)|}{|W_\text{tot}|} \text{Var}(W_d(\theta))
-\end{equation}
-\begin{equation}
-	\text{with} \hspace{5mm} \text{Var}(W) = |W|^{-1} \sum_{\textbf{w}\in W} ||\textbf{w} - \bar{\textbf{w}}||_2^2
-\end{equation}
+		\text{Var}(W_\text{tot})\, - \sum_{d\,\in\{\text{left,\,right}\}}
+			\dfrac{|W_d(\theta)|}{|W_\text{tot}|} \text{Var}(W_d(\theta))\\
+	\text{with} \hspace{5mm} \text{Var}(W) = |W|^{-1} \sum_{\boldsymbol{w}\in W} ||\boldsymbol{w} - \bar{\boldsymbol{w}}||_2^2
+\end{multline}
 
+Training the complete tree then involves choosing a set of images from which a number
+of sample pixels is drawn. These samples are then evaluated (i.e. split into left and right set)
+by the tree's root node for a number of parameter-sets. For each set of parameters, the
+split's score is calulacted using the objective function and the optimal parameters for
+this node are recorded. The process is then repeated for the node's children with the corresponding
+set (left or right; split according to the optimal parameters) until either the set contains
+only one element or the maximum depth is reached.
+When the maximum depth is reached and the set still contains more than one element, a "response"
+needs to be calculated for the node. This response represents the tree's prediction for 
+all pixels, which reach this node and is calculated from the sample's ground truth scene coordinates.
+In practice, a mean shift variance algorithm is used to find the center of the largest cluster.
 
 \subsubsection{Image Features}
 %-------------------------------------------------------------------------
 In order to use a decision tree to infer scene coordinates from the pixel coordinates,
 it is necessary to calculate features associated with a given pixel coordinate from the
-image data. 
+image data. This is implemented in the feature response function mentioned earlier.
+We have chosen to use the 'Depth-Adaptive RGB' image features from \cite{shotton2013} which
+is defined as
+\begin{equation}
+	f_{\theta}(\boldsymbol{p}) = I(\boldsymbol{p} + \frac{\boldsymbol{\delta}_1}{D(\boldsymbol{p})}, c_1)
+	- I(\boldsymbol{p} + \frac{\boldsymbol{\delta}_2}{D(\boldsymbol{p})}, c_2) \geq \tau
+\end{equation}
+where $I(\boldsymbol{p}, c)$ is the images value in the $c \in \{\text{r, g, b}\}$ component at
+the pixel location $\boldsymbol{p}$ with the parameters given explicitly as
+$\theta = \{\boldsymbol{\delta}_{1,2}, c_{1,2}, \tau\}$. The offsets $\boldsymbol{\delta}_{1,2}$
+allow the tree node to incorporate non-local information for each pixel. When the resulting
+lookup location is outside the image boundary, the original sample pixel $\boldsymbol{p}$ is
+disregarded in training and can also not be predicted by the forest.
 
 
 %-------------------------------------------------------------------------
