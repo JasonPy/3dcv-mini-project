@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
-def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, tqdm_pbar):
+def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, tqdm_pbar):
     """
     Generate k hypotheses based on n (number_pixels) pixels, using the kabsch algorithm
 
@@ -11,6 +11,7 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, tqdm_pbar
         image (ndarray): is used to retrieve the depth information
         number_pixels (int): the number of pixel that are used for the generation
         k (int): The number of hypotheses
+        index : the position of the image in the data tuple
     """
     shape = image.shape
     
@@ -22,7 +23,7 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, tqdm_pbar
     depths = np.zeros((number_pixels, ))
 
     for i in range(k):
-        forest_modes, pixels = get_random_pixel_modes(number_pixels, forest, data_tuple, shape, image)       
+        forest_modes, pixels = get_random_pixel_modes(number_pixels, index, forest, data_tuple, shape, image)       
         
         
         transformation_matrix = get_transformation_matrix(pixels, forest_modes)
@@ -34,13 +35,14 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, tqdm_pbar
 
 
 
-def get_random_pixel_modes(n, forest, data_tuple, shape, image):
+def get_random_pixel_modes(n, index, forest, data_tuple, shape, image):
     """
     Generate n random pixels and evaluate each pixel with the given forest.
     If the number of valid modes is smaller than 3 recursivly call this method again.
     
     Args:
         n (_type_): _description_
+        index (_type_) : the index of the image in the data_tuple
         forest (_type_): _description_
         data_tuple (_type_): _description_
         shape (_type_): _description_
@@ -57,9 +59,13 @@ def get_random_pixel_modes(n, forest, data_tuple, shape, image):
             random_x = np.random.randint(0, shape[0])
             random_y = np.random.randint(0, shape[1])
             
+            if depths[j] == 65535:
+                print("invalid depth")
+                return get_random_pixel_modes(n, index, forest, data_tuple, shape, image)
+            
             depths[j] = image[random_x, random_y, 3]
-
-            random_pixels[j,:] = 0, random_x, random_y
+            
+            random_pixels[j,:] = index, random_x, random_y
 
     #evaluate the forest with pixel (x,y)
     forest_modes = forest.evaluate(random_pixels, data_tuple)
@@ -75,7 +81,7 @@ def get_random_pixel_modes(n, forest, data_tuple, shape, image):
     
     #check if at least 3 points are valid
     if filtered_modes.shape[0] < 3:
-        return get_random_pixel_modes(n, forest, data_tuple, shape, image)
+        return get_random_pixel_modes(n, index, forest, data_tuple, shape, image)
     
     camera_space_cords = np.zeros(random_pixels.shape)
     camera_space_cords[:,:2] = random_pixels[:,1:]
@@ -96,12 +102,16 @@ def energy_function(predicted_positions, pixel, inv_camera_matrix, camera_hypoth
         camera_hypothesis (_type_): _description_
         inv_camera_matrix: the inverse camera matrix
     """
-    top_hat_error_width = 2000
-    min_distance = np.min(np.linalg.norm(predicted_positions - (np.matmul(camera_hypothesis, inv_camera_matrix @ pixel).T)))
+    pixel[:2] = pixel[:2] * pixel[2]
+    pixel = pixel / 1000
+    
+    top_hat_error_width = 0.1
+    min_distance = np.min(np.linalg.norm(predicted_positions - (np.matmul(np.linalg.inv(camera_hypothesis), inv_camera_matrix @ pixel).T)))
+
     return int(min_distance > top_hat_error_width)
  
 
-def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3, batch_size = 500):
+def optimize(forest, image, k, index, data_tuple, inv_camera_matrix, number_pixels = 3, batch_size = 500):
     """
     Generate k hypothesis based on n (number_pixels) pixels and optimize the hypotheses
 
@@ -109,6 +119,7 @@ def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3,
         forest : The regression forest prediciting the modes.
         image (_type_): _description_
         k: the number of hypotheses
+        index : the position of the image in the data_tuple
         data_tuple : Tuple[array, array, array] the rgb, depth image and camera pose
         inv_camera_matrix : the inverse of the camera matrix
         number_pixels (int, optional): The number of pixels that are used to calculate the inital hypotheses. Defaults to 3.
@@ -117,13 +128,13 @@ def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3,
     pbar = tqdm(total = k, desc="Intialize hypotheses")
     
     #initialize k camera hypotheses
-    hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, inv_camera_matrix, pbar)
+    hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, pbar)
     pbar.clear()
 
         
     while len(hypotheses) > 1:
         #sample random set B of image coordinates
-        pixel_batch = sample_pixel_batch(batch_size, image.shape)
+        pixel_batch = sample_pixel_batch(batch_size, image.shape, index)
         energies = np.zeros(len(hypotheses))        
         
         modes = forest.evaluate(pixel_batch, data_tuple)
@@ -132,7 +143,7 @@ def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3,
         
         pixel_inliers = {}
         
-        for i in range(len(hypotheses)):
+        for i in tqdm(range(len(hypotheses)), desc = "Calculate energy"):
                 pixel_inliers[i] = []
                 for pixel_index in range(pixel_batch.shape[0]):
                     
@@ -202,7 +213,7 @@ def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3,
         
     
 
-def sample_pixel_batch(batch_size, image_shape):
+def sample_pixel_batch(batch_size, image_shape, index):
     x = np.linspace(0, image_shape[0] - 1, image_shape[0])
     y = np.linspace(0, image_shape[1] - 1, image_shape[1])
     pixel_batch = np.zeros((batch_size, 3), dtype = np.uint16)
@@ -211,7 +222,7 @@ def sample_pixel_batch(batch_size, image_shape):
         xx = np.random.randint(0, image_shape[0])
         yy = np.random.randint(0, image_shape[1])
         
-        pixel_batch[i,:] = np.array([0, x[xx], y[yy]])
+        pixel_batch[i,:] = np.array([index, x[xx], y[yy]])
         
     return pixel_batch
 
