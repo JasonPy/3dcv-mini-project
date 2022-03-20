@@ -13,8 +13,10 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, tqdm_pbar
         k (int): The number of hypotheses
     """
     shape = image.shape
+    
     #random sampled pixels
     random_pixels = np.zeros((number_pixels, 3), dtype = np.uint16)
+    
     #generated hypotheses
     hypotheses = []
     depths = np.zeros((number_pixels, ))
@@ -84,7 +86,7 @@ def get_random_pixel_modes(n, forest, data_tuple, shape, image):
     return filtered_modes, filtered_pixels
 
 
-def energy_function(predicted_positions, pixel, camera_hypothesis):
+def energy_function(predicted_positions, pixel, inv_camera_matrix, camera_hypothesis):
     """
     Calculate the energy for a given hypothesis based on a top hat error functino with a width defined by top_hat_error_width
 
@@ -92,27 +94,30 @@ def energy_function(predicted_positions, pixel, camera_hypothesis):
         predicted_position (_type_): predicted position
         pixel (_type_): 3d position, camera space
         camera_hypothesis (_type_): _description_
+        inv_camera_matrix: the inverse camera matrix
     """
     top_hat_error_width = 2000
-    min_distance = np.min(np.linalg.norm(predicted_positions - (np.matmul(camera_hypothesis, pixel).T)))
+    min_distance = np.min(np.linalg.norm(predicted_positions - (np.matmul(camera_hypothesis, inv_camera_matrix @ pixel).T)))
     return int(min_distance > top_hat_error_width)
  
 
-def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
+def optimize(forest, image, k, data_tuple, inv_camera_matrix, number_pixels = 3, batch_size = 500):
     """
     Generate k hypothesis based on n (number_pixels) pixels and optimize the hypotheses
 
     Args:
+        forest : The regression forest prediciting the modes.
         image (_type_): _description_
         k: the number of hypotheses
+        data_tuple : Tuple[array, array, array] the rgb, depth image and camera pose
+        inv_camera_matrix : the inverse of the camera matrix
         number_pixels (int, optional): The number of pixels that are used to calculate the inital hypotheses. Defaults to 3.
         batch_size: The size of the batch used for the energy calculation.
-        forest : The regression forest prediciting the modes.
     """
     pbar = tqdm(total = k, desc="Intialize hypotheses")
     
     #initialize k camera hypotheses
-    hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, pbar)
+    hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, inv_camera_matrix, pbar)
     pbar.clear()
 
         
@@ -124,20 +129,7 @@ def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
         modes = forest.evaluate(pixel_batch, data_tuple)
         
         modes = np.asarray(modes)
-        # #remove invalid modes
-        # mask = np.isfinite(modes)
-        # print(modes.shape)
-        # mask = np.isfinite(modes)
-        # mask = ~np.any(~mask, axis = 2)
         
-        # pixel_mask = np.where(np.sum(mask, axis = 0) == 0, False, True)
-        
-        # print(mask)
-        # print(modes)
-        # print(pixel_batch)
-        # modes = modes[mask,:]
-        # print(modes)
-        # pixel_batch = pixel_batch[pixel_mask, :]
         pixel_inliers = {}
         
         for i in range(len(hypotheses)):
@@ -159,7 +151,7 @@ def optimize(forest, image, k, data_tuple, number_pixels = 3, batch_size = 500):
                     
                     reshaped_modes = np.append(reshaped_modes, np.ones((reshaped_modes.shape[0], 1)), axis = 1)
 
-                    energy = energy_function(reshaped_modes, pixel, hypotheses[i])
+                    energy = energy_function(reshaped_modes, pixel, inv_camera_matrix, hypotheses[i])
                     energies[i] += int(energy)
 
                     if energy == 0:
