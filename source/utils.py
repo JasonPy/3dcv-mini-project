@@ -1,5 +1,6 @@
 import numpy as np
-from numba import njit, jit, objmode
+import pickle
+from numba import njit, objmode
 import time
 from typing import Tuple
 from sklearn.cluster import MeanShift
@@ -67,3 +68,30 @@ def get_mode(arr: np.array):
         cluster_centers_ = modes.cluster_centers_
     mode = np.bincount(labels_).argmax()
     return cluster_centers_[mode]
+
+@njit
+def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 240)) -> np.array:
+    fx, fy = focal_length
+    cx, cy = principle_point
+    K = np.diag(np.array([fx, fy, 1, 1]))
+    K[0, 2] = cx
+    K[1 ,2] = cy
+    return K.astype(np.float64)
+
+@njit
+def mult_along_axis(A, B, axis):
+    if A.shape[axis] != B.size:
+        raise ValueError("Length of 'A' along the given axis must be the same as B.size")
+
+    shape = np.swapaxes(A, A.ndim-1, axis).shape
+    B_brc = np.broadcast_to(B, shape)
+    B_brc = np.swapaxes(B_brc, A.ndim-1, axis)
+    return A * B_brc
+
+def load_object(filename):
+    with open(filename, 'rb') as inp:
+        return pickle.load(inp)
+
+def save_object(obj, filename):
+    with open(filename, 'wb') as outp:  # Overwrites any existing file.
+        pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)

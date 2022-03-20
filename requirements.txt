@@ -29,6 +29,7 @@ networkx
 notebook
 numba
 numpy
+open3d
 pandocfilters
 parso
 pexpect
@@ -52,8 +53,6 @@ six
 sklearn
 terminado
 testpath
-torch
-torchvision
 tornado
 tqdm
 traitlets

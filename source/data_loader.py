@@ -23,6 +23,7 @@ class DataLoader:
                     files = sorted(os.listdir(segment_dir_path))
                     file_paths = [os.path.join(scene_dir, segment_dir, file) for file in files]
                     self.metadata[scene].extend(file_paths)
+            self.metadata[scene] = sorted(self.metadata[scene])
 
     def get_dataset_length(self, scene_name: str):
         return len(self.metadata[scene_name]) // 3 # three types of images per sample
@@ -47,10 +48,10 @@ class DataLoader:
         ]"""
 
         files_to_load = []
-        meta_scene = self.metadata[scene_name]
+        file_paths_for_scene = self.metadata[scene_name]
         for image_index in image_indices:
             for i in range(3):
-                files_to_load.append(meta_scene[image_index + i])
+                files_to_load.append(file_paths_for_scene[image_index * 3 + i])
 
         data_rgb = []
         data_d = []
@@ -59,11 +60,11 @@ class DataLoader:
         for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data', dynamic_ncols = True, leave = False):
             if file_path.endswith(".color.png"):  
                 image = np.array(Image.open(file_path))
-                data_rgb.append(image)
+                data_rgb.append(np.swapaxes(image, 0, 1))
 
             if file_path.endswith(".depth.png"):
                 depth = np.array(Image.open(file_path))
-                data_d.append(depth)
+                data_d.append(depth.T)
             
             if file_path.endswith(".pose.txt"):
                 pose = np.loadtxt(file_path)
@@ -85,11 +86,14 @@ class DataLoader:
         num_images = images_data[0].shape[0]
         p_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.int16)
         w_s_tot = np.zeros((num_samples * num_images, 3), dtype=np.float32)
+        total_samples = 0
 
         for i in tqdm(range(num_images), ascii = True, desc = 'Generating samples', dynamic_ncols = True, leave = False):
             (p_s, w_s) = generate_data_samples(images_data, i, num_samples)
+            num_samples = len(p_s)
+            total_samples += num_samples
             
             p_s_tot[i*num_samples:(i+1)*num_samples] = p_s
             w_s_tot[i*num_samples:(i+1)*num_samples] = w_s
 
-        return p_s_tot, w_s_tot
+        return p_s_tot[0:total_samples], w_s_tot[0:total_samples]
