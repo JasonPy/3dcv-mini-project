@@ -1,7 +1,8 @@
 import numpy as np
 import pickle
-from numba import njit, objmode
 import time
+
+from numba import njit, objmode
 from typing import Tuple
 from sklearn.cluster import MeanShift
 
@@ -71,6 +72,15 @@ def get_mode(arr: np.array):
 
 @njit
 def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 240)) -> np.array:
+    """
+    Create the intrinsic camera matrix using the focal length and principle points
+    given at the official 7-scenes data set webpage.
+
+    Returns
+    ----------
+    K: np.array
+        Intrinsic camera matrix
+    """
     fx, fy = focal_length
     cx, cy = principle_point
     K = np.diag(np.array([fx, fy, 1]))
@@ -89,9 +99,15 @@ def mult_along_axis(A, B, axis):
     return A * B_brc
 
 def load_object(filename):
+    """
+    Load an pickle file in a certain destination.
+    """
     with open(filename, 'rb') as inp:
         return pickle.load(inp)
 
 def save_object(obj, filename):
-    with open(filename, 'wb') as outp:  # Overwrites any existing file.
+    """
+    Save an object via pickle to a certain location.
+    """
+    with open(filename, 'wb') as outp: 
         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)

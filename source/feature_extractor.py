@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Tuple
 import numpy as np
 from numba import njit
-from utils import array_for_indices_3d, array_for_indices_4d, get_intrinsic_camera_matrix, mult_along_axis
+from utils import array_for_indices_3d, array_for_indices_4d, get_intrinsic_camera_matrix
 
 INVALID_DEPTH_VALUE = 65535
 
@@ -39,10 +39,8 @@ def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_
 
     m, n = image_data[1].shape[1:]
     depths = array_for_indices_3d(image_data[1], p_s)
-    depths_zero_mask = depths == 0
-    depths[depths_zero_mask] = INVALID_DEPTH_VALUE
+    depths_mask_valid = get_valid_depth_mask(depths)
 
-    depths_mask_valid = ~(depths == INVALID_DEPTH_VALUE)
     p_s = p_s[depths_mask_valid,:]
     depths = depths[depths_mask_valid] / 1000 # convert to meters
 
@@ -64,14 +62,17 @@ def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_
 
     if feature_type is FeatureType.DEPTH:
         depths_delta1 = array_for_indices_3d(image_data[1], s_delta1).astype(np.int16)
-        delta1_mask_invalid = depths_delta1 == INVALID_DEPTH_VALUE
-        depths_delta1 = depths_delta1[~delta1_mask_invalid]
+        delta1_mask_valid = get_valid_depth_mask(depths_delta1)
         
         depths_delta2 = array_for_indices_3d(image_data[1], s_delta2).astype(np.int16)
-        delta2_mask_invalid = depths_delta2 == INVALID_DEPTH_VALUE
-        depths_delta2 = depths_delta2[~delta2_mask_invalid]
-        
-        mask_split = (depths_delta1 - depths_delta2) >= tau
+        delta2_mask_valid = get_valid_depth_mask(depths_delta2)
+
+        delta1_delta2_mask_valid = ~np.logical_or(~delta1_mask_valid, ~delta2_mask_valid)
+
+        delta_diff = depths_delta1[delta1_delta2_mask_valid] / 1000 - depths_delta2[delta1_delta2_mask_valid] / 1000
+        mask_split = delta_diff >= tau
+
+        mask_valid[mask_valid] = delta1_delta2_mask_valid
         return mask_valid, mask_split
     
     if feature_type is FeatureType.DA_RGB:
@@ -134,3 +135,14 @@ def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index
         valid_samples += num_valid_samples
 
     return p_s_all, w_s_all
+
+@njit
+def get_valid_depth_mask(depths, invalid_val=INVALID_DEPTH_VALUE):
+    """
+    Return mask where depth value is non-zero and does
+    not have invalid value.
+    """
+    depths_zero_mask = depths == 0
+    depths[depths_zero_mask] = invalid_val
+    depths_mask_valid = ~(depths == invalid_val)
+    return depths_mask_valid
