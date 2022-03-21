@@ -19,7 +19,7 @@ def param_sampler(num_samples: int) -> np.array:
     for each node.
     """
     rgb_coords = np.array([0, 1, 2])
-    tau = np.zeros(num_samples) # uniform(-50, 50, num_samples)
+    tau = uniform(-10, 10, num_samples)
     delta1x = uniform(-130, 130, num_samples)
     delta1y = uniform(-130, 130, num_samples)
     delta2x = uniform(-130, 130, num_samples)
@@ -50,9 +50,14 @@ def objective_reduction_in_variance (
 
     num_samples = len(w_complete)
     if num_samples == 0:
+        # if no samples present, bad split
         return -np.inf
+    
+    # get fraction of samples in left, right split
     frac_left = len(w_left) / num_samples
     frac_right = len(w_right) / num_samples
+
+    # get variance of left, right split
     var_left = 0 if frac_left == 0 else vector_3d_array_variance(w_left)
     var_right = 0 if frac_right == 0 else vector_3d_array_variance(w_right)
 
@@ -168,7 +173,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         else:
             # Report training progress on invalid nodes, trigger next node training
-            progress += len_invalid * tree_levels_below
+            progress += len_invalid * tree_levels_below #TODO: warum?
             result = TreeWorkerResult(
                 node_id = node_id,
                 is_leaf = False,
@@ -180,18 +185,10 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
-        progress += len_data * tree_levels_below
+        progress += len_data * tree_levels_below # TODO: warum?
 
     result.progress = progress
     return result
-
-
-"""
-TOOD: Idea (by Vincenco):
-
-Use "pre pruning" on the tree. Maybe use shannon entropy in objective function
-to access the information gain at a node given a certain parameter set
-"""
 
 class Node:
     def __init__(self, node_id: str, depth: int = 0):
@@ -381,6 +378,7 @@ class RegressionTree:
                 self.processing_pool.enqueue_work(work_data)
 
                 while not (self.progress == self.total_iterations):
+                    print(self.progress)
                     self.handle_node_result(queue_result.get())
                     queue_result.task_done()
 
