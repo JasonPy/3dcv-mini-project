@@ -11,9 +11,13 @@ The implementation is based on this beautiful [paper by Shotton et al.](https://
 In order to run this project you have to make sure python3.8 or python3.9 is installed on your device. To get started we provide a short shell script `setup.sh` that creates a python virtual environment with all required packages. If this worked out, we can continue with the data retrieval.
 
 # Load Data Sets
+The 7-scenes data set consists of (who guessed it?) seven different scenes with each between $2,000$ and $12,000$ frames. To each frame the corresponding depth map and the camera-to-world, 4×4 matrix in homogeneous coordinates is provided. The full data set was obtained using a Kinect RGB-D camera at 640×480 resolution. 
 
+To load and clean any of the scenes, just have a look into `load_and_clean-7_scenes_dataset.ipynb` listed in the `./data` folder. Choose the desired scene and the data set will be loaded and cleaned up.
 
 # Regression Forest
+Let's come to the main part of our implementation. 
+
 ## Train the Forest
 ## Test the Forest
 
