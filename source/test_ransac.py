@@ -13,12 +13,12 @@ def load_object(filename):
 SCENE = 'chess'
 DATA_PATH = '../data'
 NUM_TEST_IMAGES = 200
-
+PREFIX = '../output/20-03-2022_18-42_chess/'
 loader = DataLoader(DATA_PATH)
 
-params = load_object(f'params_{SCENE}.pkl')
+params = load_object(f'{PREFIX}params_{SCENE}.pkl')
 
-forest = load_object(f'trained_forest_{SCENE}.pkl')
+forest = load_object(f'{PREFIX}trained_forest_{SCENE}.pkl')
 
 test_set_indices = params['TEST_INDICES']
 test_indices = np.random.choice(test_set_indices, NUM_TEST_IMAGES, replace = False)
@@ -28,7 +28,7 @@ images_data = loader.load_dataset(SCENE, test_indices)
 loader = DataLoader('../data')
 images_data = loader.load_dataset('chess', range(0,10))
 
-
+print(images_data[0][0].shape)
 for index in range(images_data[0][0].shape[0]):    
     rgb_image = images_data[0][index]
 
