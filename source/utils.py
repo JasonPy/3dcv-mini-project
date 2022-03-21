@@ -44,7 +44,7 @@ def vector_3d_array_mean(arr: np.array):
 def vector_3d_array_variance(arr: np.array):
     size = arr.shape[0]
     mean = vector_3d_array_mean(arr)
-    return np.sum(np.abs(arr - mean)) / size
+    return np.sum(np.sqrt(np.sum((arr - mean)**2, axis=1))) / size
 
 @njit("float32[:](float32[:, :])")
 def get_mode(arr: np.array):
@@ -73,7 +73,7 @@ def get_mode(arr: np.array):
 def get_intrinsic_camera_matrix(focal_length=(585,585), principle_point=(320, 240)) -> np.array:
     fx, fy = focal_length
     cx, cy = principle_point
-    K = np.diag(np.array([fx, fy, 1, 1]))
+    K = np.diag(np.array([fx, fy, 1]))
     K[0, 2] = cx
     K[1 ,2] = cy
     return K.astype(np.float64)
