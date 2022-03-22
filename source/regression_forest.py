@@ -61,7 +61,7 @@ def objective_reduction_in_variance (
     var_left = 0 if frac_left == 0 else vector_3d_array_variance(w_left)
     var_right = 0 if frac_right == 0 else vector_3d_array_variance(w_right)
 
-    return vector_3d_array_variance(w_complete) - frac_left * var_left + frac_right * var_right
+    return vector_3d_array_variance(w_complete) - (frac_left * var_left + frac_right * var_right)
 
 @jit(nopython = True, parallel = True)
 def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_function, feature_type):
@@ -120,7 +120,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
     progress = 0
     _ms_start = millis()
 
-    # Check if this node should not be trained
+    # Check if this node should not be trained, make it leaf node
     if len_data == 1 or depth == tree.max_depth:
         is_leaf_node = True
         progress += len_data
@@ -141,7 +141,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
         _delta_get_features = millis() - _ms_start
         
         # Find best parameter and calculate split (again, I know)
-        max_score_index = np.argmax(scores)
+        max_score_index = np.argmin(scores)
         best_params = param_samples[max_score_index]
         mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
 
@@ -173,7 +173,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         else:
             # Report training progress on invalid nodes, trigger next node training
-            progress += len_invalid * tree_levels_below #TODO: warum?
+            progress += len_invalid * tree_levels_below # invalid are considered "done" for all levels below
             result = TreeWorkerResult(
                 node_id = node_id,
                 is_leaf = False,
@@ -185,7 +185,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
-        progress += len_data * tree_levels_below # TODO: warum?
+        progress += len_data * tree_levels_below
 
     result.progress = progress
     return result
@@ -344,7 +344,7 @@ class RegressionTree:
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
 
-        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples')
+        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples') # images * samples_per_img
         self.total_iterations = len(data_samples[0]) * self.max_depth
         self.progress = 0
 
@@ -378,7 +378,6 @@ class RegressionTree:
                 self.processing_pool.enqueue_work(work_data)
 
                 while not (self.progress == self.total_iterations):
-                    print(self.progress)
                     self.handle_node_result(queue_result.get())
                     queue_result.task_done()
 
@@ -386,9 +385,11 @@ class RegressionTree:
                 queue_work.join()
                 tqdm.write('Work queue emptied.')
                 self.is_trained = True
+
             except KeyboardInterrupt:
                 tqdm.write(f'Stopping training due to KeyboardInterrupt')
                 was_interruped = True
+
             finally:
                 self.processing_pool.finish()
 
