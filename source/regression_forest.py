@@ -114,7 +114,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
     node_id, depth, p_s, w_s = work_data
 
     # Auxiliary local variables
-    tree_levels_below = tree.max_depth - depth - 1
+    tree_levels_below = tree.max_depth - depth
     len_data = len(p_s)
     is_leaf_node = False
     progress = 0
@@ -185,7 +185,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
-        progress += len_data * tree_levels_below
+        progress += len_data * tree_levels_below 
 
     result.progress = progress
     return result
@@ -345,7 +345,7 @@ class RegressionTree:
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
 
         tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples') # images * samples_per_img
-        self.total_iterations = len(data_samples[0]) * self.max_depth
+        self.total_iterations = len(data_samples[0]) * (self.max_depth + 1)
         self.progress = 0
 
         with tqdm(
@@ -412,7 +412,7 @@ class RegressionForest:
         self.num_trees = num_trees
         self.num_param_samples = num_param_samples
         self.trees = [RegressionTree(
-            max_depth = max_depth,
+            max_depth = max_depth - 1,
             feature_type = feature_type,
             param_sampler = param_sampler,
             num_param_samples = num_param_samples,

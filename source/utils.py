@@ -48,10 +48,10 @@ def vector_3d_array_variance(arr: np.array):
     return np.sum(np.sqrt(np.sum((arr - mean)**2, axis=1))) / size
 
 @njit("float32[:](float32[:, :])")
-def get_mode(arr: np.array):
+def get_mode(arr: np.array, num_samples=500):
     """
-    Apply mean shift clustering to obtain modes. 
-    Then find most frequent mode.
+    Apply mean shift clustering to obtain modes. Then find most frequent mode.
+    To save training time take at most data samples randomly.
 
     Parameters
     ----------
@@ -63,6 +63,11 @@ def get_mode(arr: np.array):
     mode: float
         Most frequent coordinate center after clustering
     """
+    if arr.shape[0] > 500:
+        sample = np.arange(0, arr.shape[0])
+        random_indices = np.random.choice(sample, size = (num_samples,), replace=False)
+        arr = arr[random_indices,:]
+
     with objmode(labels_='int64[:]', cluster_centers_='float32[:,:]'):
         modes = MeanShift(bandwidth=.1).fit(arr)
         labels_ = modes.labels_
