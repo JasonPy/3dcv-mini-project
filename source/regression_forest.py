@@ -1,25 +1,29 @@
+import numpy as np
+
 from typing import Callable
 from multiprocessing import cpu_count
 from typing import Tuple
-
 from numba import njit, jit, prange
-import numpy as np
 from numpy.random import choice, uniform
 from tqdm import tqdm
 
 from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
-from utils import get_mode, vector_3d_array_variance, split_set
+from utils import get_mode, vector_3d_array_variance, split_set, millis
 from data_loader import DataLoader
 
 @njit
 def param_sampler(num_samples: int) -> np.array:
+    """
+    Generate parameter samples according to (2.2) and (4.4)
+    for each node.
+    """
     rgb_coords = np.array([0, 1, 2])
-    tau = np.zeros(num_samples)
-    delta1x = uniform(-130 * 1000, 130 * 1000, num_samples)
-    delta1y = uniform(-130 * 1000, 130 * 1000, num_samples)
-    delta2x = uniform(-130 * 1000, 130 * 1000, num_samples)
-    delta2y = uniform(-130 * 1000, 130 * 1000, num_samples)
+    tau = uniform(-10, 10, num_samples)
+    delta1x = uniform(-130, 130, num_samples)
+    delta1y = uniform(-130, 130, num_samples)
+    delta2x = uniform(-130, 130, num_samples)
+    delta2y = uniform(-130, 130, num_samples)
     c1 = choice(rgb_coords, num_samples, replace=True)
     c2 = choice(rgb_coords, num_samples, replace=True)
     return np.stack((tau, delta1x, delta1y, delta2x, delta2y, c1, c2)).T.astype(np.float64)
@@ -46,16 +50,34 @@ def objective_reduction_in_variance (
 
     num_samples = len(w_complete)
     if num_samples == 0:
+        # if no samples present, bad split
         return -np.inf
-    fac_left = len(w_left) / num_samples
-    fac_right = len(w_right) / num_samples
-    var_left = 0 if fac_left == 0 else vector_3d_array_variance(w_left)
-    var_right = 0 if fac_right == 0 else vector_3d_array_variance(w_right)
+    
+    # get fraction of samples in left, right split
+    frac_left = len(w_left) / num_samples
+    frac_right = len(w_right) / num_samples
 
-    return vector_3d_array_variance(w_complete) - fac_left * var_left - fac_right * var_right
+    # get variance of left, right split
+    var_left = 0 if frac_left == 0 else vector_3d_array_variance(w_left)
+    var_right = 0 if frac_right == 0 else vector_3d_array_variance(w_right)
+
+    return vector_3d_array_variance(w_complete) - (frac_left * var_left + frac_right * var_right)
 
 @jit(nopython = True, parallel = True)
 def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_function, feature_type):
+    """
+    Calculate the scores according to the best split with respect to
+    the parameter samples. 
+
+    PARAMETERS
+    ----------
+    image_data: np.array
+    p_s
+    w_s
+    param_samples
+    objective_function
+    feature_type
+    """
     num_samples = len(param_samples)
     scores = np.full(num_samples, 0, dtype=np.float64)
     for i in prange(num_samples):
@@ -73,9 +95,9 @@ class TreeWorkerResult:
         response: np.array = None,
         params: np.array = None,
         set_left: Tuple[np.array, np.array] = None,
-        set_right: Tuple[np.array, np.array] = None):
-        # lengths: Tuple[int, int, int, int] = None,
-        # timings: Tuple[float, float] = None
+        set_right: Tuple[np.array, np.array] = None,
+        lengths: Tuple[int, int, int, int] = None,
+        timings: Tuple[float, float] = None):
         self.node_id = node_id
         self.is_leaf = is_leaf
         self.progress = progress
@@ -83,8 +105,8 @@ class TreeWorkerResult:
         self.params = params
         self.set_left = set_left
         self.set_right = set_right
-        # self.lengths = lengths
-        # self.timings = timings
+        self.lengths = lengths
+        self.timings = timings
 
 def regression_tree_worker(image_data, work_data, worker_params):
     # Extract work data
@@ -92,13 +114,13 @@ def regression_tree_worker(image_data, work_data, worker_params):
     node_id, depth, p_s, w_s = work_data
 
     # Auxiliary local variables
-    tree_levels_below = tree.max_depth - depth - 1
+    tree_levels_below = tree.max_depth - depth
     len_data = len(p_s)
     is_leaf_node = False
     progress = 0
-    # _ms_start = millis()
+    _ms_start = millis()
 
-    # Check if this node should not be trained
+    # Check if this node should not be trained, make it leaf node
     if len_data == 1 or depth == tree.max_depth:
         is_leaf_node = True
         progress += len_data
@@ -115,10 +137,11 @@ def regression_tree_worker(image_data, work_data, worker_params):
             param_samples = param_samples,
             objective_function = tree.objective_function,
             feature_type = tree.feature_type)
-        # _delta_get_features = millis() - _ms_start
+
+        _delta_get_features = millis() - _ms_start
         
         # Find best parameter and calculate split (again, I know)
-        max_score_index = np.argmax(scores)
+        max_score_index = np.argmin(scores)
         best_params = param_samples[max_score_index]
         mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
 
@@ -134,7 +157,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
         len_right = np.sum(~mask_split)
 
         # Report training progress
-        # _delta_split = millis() - _delta_get_features - _ms_start
+        _delta_split = millis() - _delta_get_features - _ms_start
         progress += len_data
 
         if len_invalid == len_data:
@@ -150,30 +173,22 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         else:
             # Report training progress on invalid nodes, trigger next node training
-            progress += len_invalid * tree_levels_below
+            progress += len_invalid * tree_levels_below # invalid are considered "done" for all levels below
             result = TreeWorkerResult(
                 node_id = node_id,
                 is_leaf = False,
                 params = best_params,
                 set_left = (p_s_left, w_s_left),
-                set_right = (p_s_right, w_s_right))#,
-                # lengths = (len_data, len_invalid, len_left, len_right),
-                # timings = (_delta_get_features, _delta_split))
+                set_right = (p_s_right, w_s_right),
+                lengths = (len_data, len_invalid, len_left, len_right),
+                timings = (_delta_get_features, _delta_split))
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
-        progress += len_data * tree_levels_below
+        progress += len_data * tree_levels_below 
 
     result.progress = progress
     return result
-
-
-"""
-TOOD: Idea (by Vincenco):
-
-Use "pre pruning" on the tree. Maybe use shannon entropy in objective function
-to access the information gain at a node given a certain parameter set
-"""
 
 class Node:
     def __init__(self, node_id: str, depth: int = 0):
@@ -288,12 +303,12 @@ class RegressionTree:
             self.processing_pool.enqueue_work(train_left_work_data)
             self.processing_pool.enqueue_work(train_right_work_data)
 
-            # len_data, len_invalid, len_left, len_right = result.lengths
-            # _delta_get_features, _delta_split = result.timings
-            # _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
-            # _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
-            # kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
-            # tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
+            len_data, len_invalid, len_left, len_right = result.lengths
+            _delta_get_features, _delta_split = result.timings
+            _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
+            _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
+            kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
+            tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
 
         # I don't really know if this is necessary. I want pointers :(
         self.nodes[result.node_id] = node
@@ -329,8 +344,8 @@ class RegressionTree:
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
 
-        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples')
-        self.total_iterations = len(data_samples[0]) * self.max_depth
+        tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples') # images * samples_per_img
+        self.total_iterations = len(data_samples[0]) * (self.max_depth + 1)
         self.progress = 0
 
         with tqdm(
@@ -370,9 +385,11 @@ class RegressionTree:
                 queue_work.join()
                 tqdm.write('Work queue emptied.')
                 self.is_trained = True
+
             except KeyboardInterrupt:
                 tqdm.write(f'Stopping training due to KeyboardInterrupt')
                 was_interruped = True
+
             finally:
                 self.processing_pool.finish()
 
@@ -395,7 +412,7 @@ class RegressionForest:
         self.num_trees = num_trees
         self.num_param_samples = num_param_samples
         self.trees = [RegressionTree(
-            max_depth = max_depth,
+            max_depth = max_depth - 1,
             feature_type = feature_type,
             param_sampler = param_sampler,
             num_param_samples = num_param_samples,
