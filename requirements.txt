@@ -27,7 +27,9 @@ nbconvert
 nbformat
 networkx
 notebook
+numba
 numpy
+open3d
 pandocfilters
 parso
 pexpect
@@ -48,12 +50,11 @@ scikit-image
 scipy
 Send2Trash
 six
-scikit-learn
+sklearn
 terminado
 testpath
-torch
-torchvision
 tornado
+tqdm
 traitlets
 wcwidth
 webencodings

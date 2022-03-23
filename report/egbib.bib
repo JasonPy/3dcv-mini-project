@@ -58,47 +58,16 @@
 @String(CVM = {Computational Visual Media})
 
 
+% --------------------CITATIONS---------------------------
 
-@misc{Authors14,
- author = {FirstName LastName},
- title = {The frobnicatable foo filter},
- note = {Face and Gesture  submission ID 324. Supplied as additional material {\tt fg324.pdf}},
- year = 2014
-}
-
-@misc{Authors14b,
- author = {FirstName LastName},
- title = {Frobnication tutorial},
- note = {Supplied as additional material {\tt tr.pdf}},
- year = 2014
-}
-
-@article{Alpher02,
-author = {FirstName Alpher},
-title = {Frobnication},
-journal = PAMI,
-volume = 12, 
-number = 1, 
-pages = {234--778}, 
-year = 2002
-}
-
-@article{Alpher03,
-author = {FirstName Alpher and  FirstName Fotheringham-Smythe},
-title = {Frobnication revisited},
-journal = {Journal of Foo},
-volume = 13, 
-number = 1, 
-pages = {234--778}, 
-year = 2003
-}
-
-@article{Alpher04,
-author = {FirstName Alpher and FirstName Fotheringham-Smythe and FirstName Gamow},
-title = {Can a machine frobnicate?},
-journal = {Journal of Foo},
-volume = 14, 
-number = 1, 
-pages = {234--778}, 
-year = 2004
+@inproceedings{shotton2013,
+author = {Shotton, Jamie and Glocker, Ben and Zach, Christopher and Izadi, Shahram and Criminisi, Antonio and Fitzgibbon, Andrew},
+title = {Scene Coordinate Regression Forests for Camera Relocalization in RGB-D Images},
+booktitle = {Proc. Computer Vision and Pattern Recognition (CVPR)},
+year = {2013},
+month = {June},
+abstract = {We address the problem of inferring the pose of an RGB-D camera relative to a known 3D scene, given only a single acquired image. Our approach employs a regression forest that is capable of inferring an estimate of each pixel’s correspondence to 3D points in the scene’s world coordinate frame. The forest uses only simple depth and RGB pixel comparison features, and does not require the computation of feature descriptors. The forest is trained to be capable of predicting correspondences at any pixel, so no interest point detectors are required. The camera pose is inferred using a robust optimization scheme. This starts with an initial set of hypothesized camera poses, constructed by applying the forest at a small fraction of image pixels. Preemptive RANSAC then iterates sampling more pixels at which to evaluate the forest, counting inliers, and refining the hypothesized poses. We evaluate on several varied scenes captured with an RGB-D camera and observe that the proposed technique achieves highly accurate relocalization and substantially out-performs two state of the art baselines.},
+publisher = {IEEE},
+url = {https://www.microsoft.com/en-us/research/publication/scene-coordinate-regression-forests-for-camera-relocalization-in-rgb-d-images/},
+edition = {Proc. Computer Vision and Pattern Recognition (CVPR)},
 }

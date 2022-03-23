@@ -1,5 +1,4 @@
 # Output
-out*
 !./out/.gitkeep
 
 # Byte-compiled / optimized / DLL files
@@ -132,10 +131,14 @@ Temporary Items
 *.toc
 *.ist
 *.acn
+*.fdb_latexmk
+*.fls
 *.acr
+*.aux
 *.alg
 *.bbl
 *.blg
+*.brf
 *.dvi
 *.glg
 *.gls
@@ -157,4 +160,16 @@ Temporary Items
 *-blx.bib
 *.run.xml
 
-data
+
+# Dataset
+data/chess/*
+data/fire/*
+data/heads/*
+data/office/*
+data/pumpkin/*
+data/redkitchen/*
+data/stairs/*
+data/unzip_dataset.sh
+
+3dcv-mp/*
+
