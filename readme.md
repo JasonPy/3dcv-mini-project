@@ -18,10 +18,16 @@ To load and clean any of the scenes, just have a look into `load_and_clean-7_sce
 # Regression Forest
 Let's come to the main part of our repository. The Regression Forest is provided in the file `./source/regression_forest.py` and contains the implementation of a forest being capable of associating 2D pixel coordinates with 3D world coordinates. It requires the `./source/data_loader.py` in order to retrieve sampled image data for each tree to be trained. We further implemented the full training and test process in parallel. The respective code can be found in `./source/processing_pool.py`.  
 
+## Feature Extraction
+Each pixel that is fed into the forest results in an feature. These features are fully based on pixel and depth values. Two different types of features are currently available:
+* Depth-Adaptive RGB 
+* Depth
+The former uses RGB and depth values of the surrounding area of the pixel. Features of the second type are using depth values only. If pixels exhibit an invalid depth value or are shifted outside the image boundary, they are not used for training or testing. We recommend to have a look at section 2.2 in [1] for more detailed information. 
+
 ## Train the Forest
 To train the forest, the script `./source/train_forest.py` is utilized. By setting the required hyperparameters as well as one of the scenes, the training can be initiated. 
 
-| Hyperparameter | Value        | 
+| Hyperparameter | Default        | 
 | ------------- |:-------------:| 
 |TEST_SIZE | 0.5 |
 |NUM_TREES | 5 |
