@@ -9,6 +9,9 @@ class PoseEvaluator:
 
     def __init__(self, translational_error_threshold: float = 5., angular_error_threshold: float = 5.):
         """
+        Consider that the pose matrices are in meters. The 'translational_error_threshold' is 
+        therefore casted from cm to m. 
+
         Parameters
         ----------
         translational_error_threshold: float
@@ -16,7 +19,7 @@ class PoseEvaluator:
         angular_error_threshold: float
             angle in degrees
         """
-        self.translational_error_threshold = translational_error_threshold * 10. # to mm
+        self.translational_error_threshold = translational_error_threshold / 100. # to m
         self.angular_error_threshold = angular_error_threshold
 
 
