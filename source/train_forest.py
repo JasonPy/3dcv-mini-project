@@ -1,26 +1,25 @@
 import numpy as np
-import os
 from sklearn import model_selection
 from datetime import datetime
 
 from regression_forest import RegressionForest, objective_reduction_in_variance, param_sampler
 from feature_extractor import FeatureType
 from data_loader import DataLoader
-from utils import save_object
+from utils import save_forest
 
 # BASE PARAMETERS
 TIMESTAMP = datetime.now()
 DATA_PATH = '../data'
 OUTPUT_PATH = '../output'
-SCENE = 'pumpkin'
+SCENE = 'heads'
 
 # TRAINING PARAMETERS
-TEST_SIZE = 1/3
-NUM_TREES = 5
-TREE_MAX_DEPTH = 16
-NUM_TRAIN_IMAGES_PER_TREE = 500
-NUM_SAMPLES_PER_IMAGE = 5000
-NUM_PARAMETER_SAMPLES = 1024
+TEST_SIZE = 5/12
+NUM_TREES = 1
+TREE_MAX_DEPTH = 2
+NUM_TRAIN_IMAGES_PER_TREE = 2
+NUM_SAMPLES_PER_IMAGE = 10
+NUM_PARAMETER_SAMPLES = 10
 FEATURE_TYPE = FeatureType.DA_RGB
 
 loader = DataLoader(DATA_PATH)
@@ -42,27 +41,23 @@ forest.train(
     num_images_per_tree = NUM_TRAIN_IMAGES_PER_TREE,
     num_samples_per_image = NUM_SAMPLES_PER_IMAGE)
 
-# save used parameters
+# save parameters
 params = {
-  "TIMESTAMP": TIMESTAMP.strftime("%d/%m/%Y %H:%M:%S"),
-  "SCENE": SCENE,
-  "TEST_SIZE": TEST_SIZE,
-  "NUM_TREES": NUM_TREES,
-  "TREE_MAX_DEPTH": TREE_MAX_DEPTH,
-  "NUM_TRAIN_IMAGES_PER_TREE": NUM_TRAIN_IMAGES_PER_TREE,
-  "NUM_SAMPLES_PER_IMAGE": NUM_SAMPLES_PER_IMAGE,
-  "NUM_PARAMETER_SAMPLES": NUM_PARAMETER_SAMPLES,
-  "FEATURE_TYPE": FEATURE_TYPE,
-  "TRAIN_INDICES": train_indices,
-  "TEST_INDICES": test_indices
+    "TIMESTAMP": TIMESTAMP.strftime(f'%d-%m-%Y_%H-%M'),
+    "SCENE": SCENE,
+    "TEST_SIZE": TEST_SIZE,
+    "NUM_TREES": NUM_TREES,
+    "TREE_MAX_DEPTH": TREE_MAX_DEPTH,
+    "NUM_TRAIN_IMAGES_PER_TREE": NUM_TRAIN_IMAGES_PER_TREE,
+    "NUM_SAMPLES_PER_IMAGE": NUM_SAMPLES_PER_IMAGE,
+    "NUM_PARAMETER_SAMPLES": NUM_PARAMETER_SAMPLES,
+    "FEATURE_TYPE": FEATURE_TYPE,
+    "TRAIN_INDICES": train_indices,
+    "TEST_INDICES": test_indices
 }
 
 if forest.is_trained:
-    # create new directory and save forest / parameters
-    target_dir = os.path.join(OUTPUT_PATH, TIMESTAMP.strftime(f'%d-%m-%Y_%H-%M_{SCENE}'), '')
-    os.makedirs(target_dir)
-    save_object(forest, os.path.join(target_dir, f'trained_forest_{SCENE}.pkl'))
-    save_object(params, os.path.join(target_dir, f'params_{SCENE}.pkl'))
+    save_forest(forest, params, OUTPUT_PATH)   
     print(f'Done training forest of scene {SCENE}.')
 else:
     print(f'Training interrupted!')

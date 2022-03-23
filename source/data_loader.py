@@ -1,9 +1,10 @@
 import os
-from typing import Tuple
-
 import numpy as np
+
+from typing import Tuple
 from tqdm import tqdm
 from PIL import Image
+
 from feature_extractor import generate_data_samples
 
 SCENES = ["chess", "fire", "heads", "office", "pumpkin", "redkitchen", "stairs"]
@@ -12,11 +13,15 @@ class DataLoader:
     def __init__(self, data_path: str):
         self.data_path = data_path
         self.metadata = dict()
+        self.scenes = None
 
-        for scene in SCENES:
+        # check which of the datasets is downloaded
+        folders = [os.path.basename(folder) for folder in os.listdir(self.data_path)]
+        self.scenes =  np.intersect1d(SCENES, folders)
+
+        for scene in self.scenes:
             self.metadata[scene] = []
             scene_dir = os.path.join(self.data_path, scene)
-
             for segment_dir in os.listdir(scene_dir):
                 segment_dir_path = os.path.join(scene_dir, segment_dir)
                 if os.path.isdir(segment_dir_path):
@@ -26,7 +31,13 @@ class DataLoader:
             self.metadata[scene] = sorted(self.metadata[scene])
 
     def get_dataset_length(self, scene_name: str):
-        return len(self.metadata[scene_name]) // 3 # three types of images per sample
+        """
+        Retrieve the length of a data set.
+        """
+        if scene_name in self.scenes:
+            return len(self.metadata[scene_name]) // 3 # three types of images per sample
+        else:
+            raise Exception(f"The data set '{scene_name}' is not downloaded!")
 
     def load_dataset(self, scene_name: str, image_indices: np.array):
         """
@@ -41,12 +52,13 @@ class DataLoader:
 
         Returns
         ----------
-        dataset: Tuple[
-            data_rgb: List,
-            data_d: List,
-            data_pose: List
-        ]"""
+        dataset: Tuple[data_rgb: np.array,data_d: np.array,data_pose: np.array]
+            Returns the images, respective depth maks and camera poses
+        """
 
+        if scene_name not in self.scenes:
+            raise Exception(f"The data set '{scene_name}' is not downloaded!")
+            
         files_to_load = []
         file_paths_for_scene = self.metadata[scene_name]
         for image_index in image_indices:
@@ -97,3 +109,4 @@ class DataLoader:
             w_s_tot[i*num_samples:(i+1)*num_samples] = w_s
 
         return p_s_tot[0:total_samples], w_s_tot[0:total_samples]
+
