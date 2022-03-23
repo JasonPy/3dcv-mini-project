@@ -160,6 +160,7 @@ Temporary Items
 *-blx.bib
 *.run.xml
 
+
 # Dataset
 data/chess/*
 data/fire/*
@@ -171,3 +172,4 @@ data/stairs/*
 data/unzip_dataset.sh
 
 3dcv-mp/*
+
