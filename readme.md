@@ -19,7 +19,7 @@ To load and clean any of the scenes, just have a look into `load_and_clean-7_sce
 Let's come to the main part of our repository. The Regression Forest is provided in the file `./source/regression_forest.py` and contains the implementation of a forest being capable of associating 2D pixel coordinates with 3D world coordinates. It requires the `./source/data_loader.py` in order to retrieve sampled image data for each tree to be trained. We further implemented the full training and test process in parallel. The respective code can be found in `./source/processing_pool.py`.  
 
 ## Feature Extraction
-Each pixel that is fed into the forest results in an feature. These features are fully based on pixel and depth values. Two different types of features are currently available:
+Each pixel that is fed into the forest results in a feature. These features are fully based on pixel and depth values. Two different types of features are currently available:
 * Depth-Adaptive RGB 
 * Depth
 
@@ -41,7 +41,7 @@ To train the forest, the script `./source/train_forest.py` is utilized. By setti
 The default parameters are set according to the specifications in [1]. Feel free to adjust them depending on your specific goals. Finally, the trained forest and corresponding parameters are saved.
 
 ## Test the Forest
-The evaluation of the forest, is provided in the `demo.ipynb` notebook. Therefore, a number of random images is sampled from the test data set. Then corresponding image and true world coordinates are obtained, to compare the predictions later on. The forest is then tested with a batch of unseen images, or in particular their random 2D image coordinates. Eventually, the tree provides the associated 3D world coordinates predicted by each tree.
+The evaluation of the forest, is provided in the `demo.ipynb` notebook. Therefore, a number of random images is sampled from the test data set. Then corresponding image and true world coordinates are obtained, to compare the predictions later on. The forest is then tested with a batch of unseen images, or in particular their random 2D image coordinates. Eventually, the forest provides the associated 3D world coordinates predicted by each tree.
 
 # RANSAC Optimization
 
