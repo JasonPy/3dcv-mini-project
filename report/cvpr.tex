@@ -91,8 +91,7 @@ Kinect camera, depth information for each pixel is extracted. The resolution of 
 bit RGB-images is $640\times480$ pixels and the corresponding $16$ bit depth map is given 
 in millimeters. For each image a $4\times4$ ground truth camera pose in homogenous coordinates 
 is provided, which allows to validate the estimated camera pose matrix for a given image. 
-
-The datasets are split randonly into train and test according to~\cite[Table 1]{shotton2013}. 
+Each dataset is split randomly into train and test according to the relative sizes in~\cite[Table 1]{shotton2013}. 
 
 % WIP FALK:
 Our data consists of a number of samples $\{(\boldsymbol{p}_i, \boldsymbol{w}_i)\}$ with
@@ -118,16 +117,16 @@ data point $\boldsymbol{p}$ is branched to the left or right child node. To ever
 (i.e. a node without children) we assign a response value $\boldsymbol{w}_n$ representing
 the tree's prediction for a data point $\boldsymbol{p}$ that has reached this node. In our
 specific application the input data points $\boldsymbol{p}$ are 2D pixel coordinates and the
-responses $\boldsymbol{w}$ are 3D world coordinates.\\
+responses $\boldsymbol{w}$ are 3D world coordinates.
 
 The process of training the tree involves finding the set of parameters
 $\{\theta_n | \, \forall \, \text{nodes} \, n\}$ which results in the best predictions
 for previously unseen input data points $\boldsymbol{p}$. However, this final goal cannot
-be optimized towards directly during training, as this would entail optimization in the
+be optimized directly during training, as this would entail optimization in the
 very large space of all possible parameters for all tree-nodes simultaneously. Therefore
 it is much more efficient to optimize the parameters one node at a time using a
 proxy-objective $Q(S_{\text{tot}},\, S_{\text{left}}(\theta),\, S_{\text{right}}(\theta))$
-which ideally leads to a similar result.\\
+which ideally leads to a similar result.
 
 Let $S_{\text{tot},n} = \{ (\boldsymbol{p}_i, \boldsymbol{w}_i) \, | \, i \in |S_n|\}$ denote the
 input data and target response for a given node $n$. According to its parameters the
@@ -140,10 +139,10 @@ node splits this set into the subsets
 \end{equation}
 corresponding to left and right child node respectively. The objective function $Q$ is
 then used to assign a score to the split resulting from the parameters $\theta_n$ at
-this node.\\
+this node.
 
 The objective function used here optimizes for a reduction in variance of the target 
-responses (i.e. "wants the tree to group together points similar scene coordinates").
+responses (i.e. "wants the tree to group together points with similar scene coordinates").
 Defining $W_n = \{ \boldsymbol{w}_i \, | \, (\boldsymbol{p}_i, \boldsymbol{w}_i) \in S_n \}$ this
 objective can be mathematically expressed as:
 
@@ -161,10 +160,12 @@ split's score is calulacted using the objective function and the optimal paramet
 this node are recorded. The process is then repeated for the node's children with the corresponding
 set (left or right; split according to the optimal parameters) until either the set contains
 only one element or the maximum depth is reached.
-When the maximum depth is reached and the set still contains more than one element, a "response"
+When the maximum depth is reached and the set still contains more than one element, a response
 needs to be calculated for the node. This response represents the tree's prediction for 
 all pixels, which reach this node and is calculated from the sample's ground truth scene coordinates.
-In practice, a mean shift variance algorithm is used to find the center of the largest cluster.
+In practice, a mean shift variance algorithm \cite{Comaniciu2002} is used to find the center of the 
+largest cluster. Thereby, at most $500$ random coordinates are utilized for calculation to limit 
+the computational cost.
 
 \subsubsection{Image Features}
 %-------------------------------------------------------------------------
@@ -174,15 +175,23 @@ image data. This is implemented in the feature response function mentioned earli
 We have chosen to use the 'Depth-Adaptive RGB' image features from \cite{shotton2013} which
 is defined as
 \begin{equation}
-	f_{\theta}(\boldsymbol{p}) = I(\boldsymbol{p} + \frac{\boldsymbol{\delta}_1}{D(\boldsymbol{p})}, c_1)
-	- I(\boldsymbol{p} + \frac{\boldsymbol{\delta}_2}{D(\boldsymbol{p})}, c_2) \geq \tau
+	f_{\theta}^{da-rgb}(\boldsymbol{p}) = I\left(\boldsymbol{p} + \frac{\boldsymbol{\delta}_1}{D(\boldsymbol{p})}, c_1\right)
+	- I\left(\boldsymbol{p} + \frac{\boldsymbol{\delta}_2}{D(\boldsymbol{p})}, c_2\right)
 \end{equation}
 where $I(\boldsymbol{p}, c)$ is the images value in the $c \in \{\text{r, g, b}\}$ component at
-the pixel location $\boldsymbol{p}$ with the parameters given explicitly as
-$\theta = \{\boldsymbol{\delta}_{1,2}, c_{1,2}, \tau\}$. The offsets $\boldsymbol{\delta}_{1,2}$
+the pixel location $\boldsymbol{p}$ and the 'Depth' image feature specified as
+\begin{equation}
+	f_{\theta}^{depth}(\boldsymbol{p}) = D\left(\boldsymbol{p} + \frac{\boldsymbol{\delta}_1}{D(\boldsymbol{p})}\right)
+	- D\left(\boldsymbol{p} + \frac{\boldsymbol{\delta}_2}{D(\boldsymbol{p})}\right)
+\end{equation}
+where $D(\boldsymbol{p})$ refers to the depth value corresponding to pixel $\boldsymbol{p}$.
+The parameters are given explicitly as $\theta = \{\boldsymbol{\delta}_{1,2}, c_{1,2}, \tau\}$. 
+The offsets $\boldsymbol{\delta}_{1,2}$
 allow the tree node to incorporate non-local information for each pixel. When the resulting
 lookup location is outside the image boundary, the original sample pixel $\boldsymbol{p}$ is
-disregarded in training and can also not be predicted by the forest.
+disregarded in training and can also not be predicted by the forest. The parameter threshold 
+$\tau$ is used to decide if the feature is split to the right or left child node according to 
+$f_{\theta}(\boldsymbol{p}) \leq \tau$.
 
 
 %-------------------------------------------------------------------------
@@ -190,28 +199,40 @@ disregarded in training and can also not be predicted by the forest.
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation}
+To validate the results, estimated camera poses are compared in terms of their translational and
+angular error versus the true camera poses. The findings for each scene are subsequently compared
+to the results of~\cite{shotton2013}. 
+
+\subsection{Metrics}
 To evaluate the estimated camera poses, the translational and angular error with respect to the 
 ground truth camera poses is measured. In particular, a translational error of at 
 most $5$cm and angular error of at most $5^{\circ}$ is considered to be a correctly predicted pose. 
 
 Let the estimated pose matrix $H_{est}$ and the ground truth $H_{gt}$ be $4 \times 4$ matrices
-in homogeneous coordinates. Then the translational error $\varepsilon_t$ is obtained by using the 
-$L_2$-norm of the translation vectors $T_{est}, T_{gt} \in \mathbb{R}^3$ as 
+in homogeneous coordinates that encode the location and orientation of the camera in the world 
+coordinate system. To measure the translational offset between them, the translation vectors 
+$\boldsymbol{t_{est}}, \boldsymbol{t_{gt}} \in \mathbb{R}^3$ of the matrices are used.
+By applying the $L_2$-norm to the translation vectors, the translational error is obtained by
 \begin{align}
-    \varepsilon_t &= \sqrt{\sum_{x,y,z}(T_{est} - T_{gt})^2}.
+    \varepsilon_t &= \sqrt{\sum_{x,y,z}||\boldsymbol{t_{est}} - \boldsymbol{t_{est}}||^2}.
 \end{align}
-
 To compare two rotational poses, the angle of the difference rotation matrix $R$ is utilized. 
 Denote the whole $3\times3$ upper-left matrix of $H_{est}$ and $H_{gt}$ as $R_{est}$ and 
-$R_{gt}$ repectively. They refer to the rotational poses and the difference rotation can be computed 
-by $R = R_{est}^TR_{gt}$. The angle $\varepsilon_r$ between those two rotation matrices is then obtained as
+$R_{gt}$ repectively. They refer to the orientation in space and the difference rotation can be computed 
+as $R = R_{est}^TR_{gt}$. The angle between those two rotation matrices is the desired
+error measure and defined as
 \begin{align}
     \varepsilon_r &= arccos \left( \frac{tr(R)-1}{2} \right)
 \end{align}
-where $tr(R)$ is the tracce of a matrix.
+where $tr(R)$ is the trace of a matrix.
 
-Based on these metrics the test data set for each scene is used to predict the amount of correctly 
-estimated camera poses. These findings are then compared to the results of~\cite{shotton2013}.
+\subsection{??}
+Based on the metrics stated in the previous section, the amount of correctly estimated camera poses for each scene
+is calculated. Therefore, the forest is evaluated with unseen images from the test data set and consecutive
+RANSAC optimization predicts a camera pose for each image. These predictions are then compared to the 
+ground truth camera poses and the amount of correctly classified poses recorded.
+
+These findings are then compared to the results of~\cite{shotton2013}. 
 
 %-------------------------------------------------------------------------
 \section{Results}
