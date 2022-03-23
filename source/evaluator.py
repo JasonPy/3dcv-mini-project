@@ -1,9 +1,7 @@
+from typing import List
 import numpy as np
 
-# TODO: make sure to provide the 3D poses in an numpy array with 4x4 matrices np.array([[4x4], [4x4], ...])
-
-
-class Evaluator:
+class PoseEvaluator:
     """
     This class represents a tool to evaluate the percentage of correctly predicted poses.
     Thereby the predictions are compared to the ground truth according to the translational and angular error.
@@ -113,21 +111,60 @@ class Evaluator:
 
         return translational_error
 
-def get_valid_predictions(tree_predictions):
-    valid_predictions_tot = 0
-    predictions = np.ndarray((tree_predictions[0].shape[0] * len(tree_predictions), 3), dtype=np.float64)
 
-    for pred in tree_predictions:
-        valid_mask = ~np.any(pred == -np.inf, axis=1)
-        valid_predictions = np.sum(valid_mask)
-        predictions[valid_predictions_tot:valid_predictions_tot+valid_predictions] = pred[valid_mask]
-        valid_predictions_tot += valid_predictions
-    return predictions[:valid_predictions_tot]
+class SceneCoordinateEvaluator:
+    """
+    This class handles the evaluation of predicted 3D scene coordinates.
+    """
 
-def get_prediction_error(tree_predictions, ground_truth):
-    errors = []
+    def __init__(self):
+        pass
 
-    for pred in tree_predictions:
-        valid_mask = ~np.any(pred == -np.inf, axis=1)
-        errors.append(np.linalg.norm(ground_truth[valid_mask] - pred[valid_mask], axis=1))
-    return errors
+    def get_valid_predictions(self, tree_predictions) -> np.array:
+        """
+        Evaluates 3D world coordinates in terms of invalid values (-np.inf)
+        and removes them from the initial predictions.
+
+        Parameters
+        -------
+        tree_predictions: List[np.array]
+            World coordinate predictions for each tree
+
+        Returns
+        -------
+        predictions: np.array
+            The predictions that are valid
+        """
+        valid_predictions_tot = 0
+        predictions = np.ndarray((tree_predictions[0].shape[0] * len(tree_predictions), 3), dtype=np.float64)
+
+        for pred in tree_predictions:
+            valid_mask = ~np.any(pred == -np.inf, axis=1)
+            valid_predictions = np.sum(valid_mask)
+            predictions[valid_predictions_tot:valid_predictions_tot+valid_predictions] = pred[valid_mask]
+            valid_predictions_tot += valid_predictions
+        return predictions[:valid_predictions_tot]
+
+    def get_prediction_error(self, tree_predictions, ground_truth) -> List:
+        """
+        Calculates the error for each predicted world coordinate
+        with respect to the ground truth. The L2-norm is utilized.
+
+        Parameters
+        -------
+        tree_predictions: List[np.array]
+            World coordinate predictions for each tree
+        ground_truth: np.array
+            True 3D world coordinates
+
+        Returns
+        -------
+        errors: List[np.array]
+            Error for all coordinates in each tree
+        """
+        errors = []
+
+        for pred in tree_predictions:
+            valid_mask = ~np.any(pred == -np.inf, axis=1)
+            errors.append(np.linalg.norm(ground_truth[valid_mask] - pred[valid_mask], axis=1))
+        return errors
