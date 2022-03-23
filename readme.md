@@ -22,6 +22,7 @@ Let's come to the main part of our repository. The Regression Forest is provided
 Each pixel that is fed into the forest results in an feature. These features are fully based on pixel and depth values. Two different types of features are currently available:
 * Depth-Adaptive RGB 
 * Depth
+
 The former uses RGB and depth values of the surrounding area of the pixel. Features of the second type are using depth values only. If pixels exhibit an invalid depth value or are shifted outside the image boundary, they are not used for training or testing. We recommend to have a look at section 2.2 in [1] for more detailed information. 
 
 ## Train the Forest
