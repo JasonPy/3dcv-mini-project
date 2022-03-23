@@ -1,6 +1,8 @@
 from distutils.log import error
 import faulthandler
+from operator import inv
 from random import randint, random
+import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
@@ -22,21 +24,15 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, in
     #generated hypotheses
     hypotheses = []
     
-    fx, fy = (585, 585)
-    cx, cy = (320, 240)
-    K = np.diag(np.array([fx, fy, 1]))
-    K[0, 2] = cx
-    K[1 ,2] = cy
     
-    
-    inv = K
-    inv = np.linalg.inv(inv)
+
     for i in range(k):
+        # transformation_matrix = get_initial_transformation(number_pixels, index, forest, data_tuple, shape, image, inv_camera_matrix)
         forest_modes, pixels = get_random_pixel_modes(number_pixels, index, forest, data_tuple, shape, image)       
         
         # print(pixels)
         test = np.zeros_like(pixels, dtype=np.float64)
-        test[:,:2] = pixels[:,1:] #* pixels[:,2][:,np.newaxis]
+        test[:,:2] = pixels[:,:2] #* pixels[:,2][:,np.newaxis]
         test[:,2] = np.ones(test.shape[0])
         # print(test)
         # print(test)
@@ -44,18 +40,21 @@ def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, in
         ones = np.ones((test.shape[0], 1))
         # test = np.append(test, ones, axis = 1)
         
-        for index in range(test.shape[0]):
-            test[index,:] = (inv @ test[index,:].T) * pixels[index, 2] / 1000
-            
-        transformation_matrix = get_transformation_matrix(test[:,:3], forest_modes)
+        for i in range(test.shape[0]):
+            camera_coords = (inv_camera_matrix @ test[i,:].T)
+            test[i,:] = camera_coords * pixels[i, 2] / 1000
         
+        #transformation  mean <0.05 ? else resample
+        transformation_matrix = get_transformation_matrix(test[:,:3], forest_modes)
+ 
+            
         ones = np.ones((forest_modes.shape[0], 1))
 
         forest_modes = np.append(forest_modes, ones, axis = 1)
         test = np.append(test, ones, axis = 1)
         # print(forest_modes)
         # print((transformation_matrix @ test[0,:].T)[:,np.newaxis].T)
-        print(np.linalg.norm(forest_modes - (transformation_matrix @ test[0,:].T)[:,np.newaxis].T, axis = 1))
+        # print(np.linalg.norm(forest_modes - (transformation_matrix @ test[0,:].T)[:,np.newaxis].T, axis = 1))
         
         hypotheses.append(transformation_matrix)
         tqdm_pbar.update(1)
@@ -81,13 +80,13 @@ def get_random_pixel_modes(n, index, forest, data_tuple, shape, image):
         _type_: Random selected modes, random_pixels
     """
     
-    random_pixels = np.zeros((n, 3), dtype = np.uint16)
+    random_pixels = np.zeros((n, 3), dtype = np.int16)
     depths = np.zeros((n, ))
-    x = np.random.choice(shape[0], size= n, replace=False)
-    y = np.random.choice(shape[1], size= n, replace=False)
+    x = np.random.choice(shape[0], size= n, replace=True)
+    y = np.random.choice(shape[1], size= n, replace=True)
 
     depths = image[x, y, 3]
-    if np.any(depths == 65535):
+    if np.any(depths == 65535) or np.any(depths == 0):
         return get_random_pixel_modes(n, index, forest, data_tuple, shape, image)
     
     indices = np.repeat(index, x.shape[0])
@@ -106,9 +105,10 @@ def get_random_pixel_modes(n, index, forest, data_tuple, shape, image):
     #         random_pixels[j,:] = index, random_x, random_y
 
     #evaluate the forest with pixel (x,y)
-    forest_modes = forest.evaluate(random_pixels, data_tuple)
+    predictions = forest.evaluate(random_pixels, data_tuple)
 
-    mode_matrix = sample_random_modes(forest_modes)
+    # get random mode (3)
+    mode_matrix = sample_random_modes(predictions)
     
     #remove invalid modes/pixels
     mask = np.isfinite(mode_matrix)
@@ -121,13 +121,13 @@ def get_random_pixel_modes(n, index, forest, data_tuple, shape, image):
     if filtered_modes.shape[0] < 3:
         return get_random_pixel_modes(n, index, forest, data_tuple, shape, image)
     
-    camera_space_cords = np.zeros(random_pixels.shape)
-    camera_space_cords[:,:2] = random_pixels[:,1:]
-    camera_space_cords[:,2] = depths
+    x_y_d = np.zeros(random_pixels.shape)
+    x_y_d[:,:2] = random_pixels[:,1:]
+    x_y_d[:,2] = depths
 
-    filtered_pixels = camera_space_cords[mask,:]
+    x_y_d = x_y_d[mask,:]
         
-    return filtered_modes, filtered_pixels
+    return filtered_modes, x_y_d
 
 
 def energy_function(predicted_positions, pixel, inv_camera_matrix, camera_hypothesis):
@@ -147,14 +147,14 @@ def energy_function(predicted_positions, pixel, inv_camera_matrix, camera_hypoth
     # tmp_pixel[:3] = tmp_pixel[:3] / 1000.0
     t = inv_camera_matrix @ tmp_pixel
     t= t * pixel[2] / 1000
-    t = np.append(t, 1)
+    t = np.append(t,1)
     # print(tmp_pixel)
     # print(f"Camera \n {camera_hypothesis}")
     # print(f" inv camera \n {inv_camera_matrix}")
     # print(np.matmul(np.linalg.inv(camera_hypothesis), inv_camera_matrix @ tmp_pixel).T)
     
     top_hat_error_width = 2
-    min_distance = np.min(np.linalg.norm(predicted_positions[:,:3] - ((camera_hypothesis @ t).T)[:3]))
+    min_distance = np.min(np.linalg.norm(predicted_positions[:,:3] - ((camera_hypothesis @ t))[:3]))
     
     # print(predicted_positions - (np.matmul(camera_hypothesis, inv_camera_matrix @ tmp_pixel).T))
     
@@ -182,85 +182,128 @@ def optimize(forest, image, k, index, data_tuple, inv_camera_matrix, number_pixe
     hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, inv_camera_matrix, pbar)
     pbar.clear()
     faulthandler.enable()
-    while len(hypotheses) > 1:
+    pixel_inliers = {}
+    errors = {}
+    
+    valid_hypotheses = len(hypotheses)
+    valid_hypotheses_indices = np.arange(0, len(hypotheses))
+    
+    #initialize for each hypothese a list
+    for element in valid_hypotheses_indices:
+          pixel_inliers[element] = []
+
+    energies = np.zeros(len(valid_hypotheses_indices))
+    total_points = 0
+    
+    while len(valid_hypotheses_indices) > 1:
         #sample random set B of image coordinates
-        energies = np.zeros(len(hypotheses))
-        pixel_batch = sample_pixel_batch(batch_size, image.shape, index)
-        print(pixel_batch.shape)
+        pixel_batch = sample_pixel_batch(batch_size, image.shape, index, image[:,:,3])
         modes = forest.evaluate(pixel_batch, data_tuple)
         modes = np.asarray(modes)
-
         
-        
-        pixel_inliers = {}
         invalid = 0
-        errors = {}
-        
-        #TODO: change of the order of the loops
-        for i in tqdm(range(len(hypotheses)), desc = "Calculate energy"):
-                pixel_inliers[i] = []
-                errors[i] = 0
-                hypothesis =hypotheses[i]
-                
-                for pixel_index in range(pixel_batch.shape[0]):                    
-                    depth = image[pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], 3]
-                    pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
-                    
-                    reshaped_modes = modes[:,pixel_index,:]
-                    
-                    #remove invalid modes
-                    if np.sum(np.isfinite(reshaped_modes)[:,0], axis = 0) > 0:
-                        reshaped_modes = reshaped_modes[np.isfinite(reshaped_modes)[:,0],:]
-                        
-                    elif np.any(~np.isfinite(reshaped_modes)):
-                        if i == 0:
-                            invalid += 1
-                        continue
-                    if depth == 65535:
-                        if i == 0:
-                            invalid += 1
-                        continue
-                    
-                    reshaped_modes = np.append(reshaped_modes, np.ones((reshaped_modes.shape[0], 1)), axis = 1)
-                    
-                    energy = energy_function(reshaped_modes, pixel, inv_camera_matrix, hypothesis)
-                    errors[i] += energy
-                    energies[i] += int(energy>40)
+        t1 = time.time()
+        for pixel_index in range(pixel_batch.shape[0]):                    
+            depth = image[pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], 3]
+            pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
+            
+            pixel_modes = modes[:,pixel_index,:]
+            
+            #check if more than 0 modes are not none and remove them
+            inv_c = ~np.isfinite(pixel_modes)
+            if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
+                pixel_modes = pixel_modes[np.isfinite(pixel_modes)[:,0],:]
+            #all modes are none skip pixel
+            elif np.any(~np.isfinite(pixel_modes)):
 
-                    if energy == 0:
-                        pixel_inliers[i].append(pixel_index)
-                # errors[i] /= (batch_size - invalid)
-        print(batch_size - invalid)
-        print(np.sort(energies)[:40])
-        # print("############## distances")
-        # print(sorted(errors.values()))
-        sorted_energy_index = np.argsort(energies)
-        upper_half = int(len(sorted_energy_index) // 2)
-        half_energie_index = sorted_energy_index[:upper_half]
+                continue
+            if depth == 65535:
+
+                continue
+            
+            pixel_modes = np.append(pixel_modes, np.ones((pixel_modes.shape[0], 1)), axis = 1)
+
+            for i,valid_index in enumerate(valid_hypotheses_indices):
+                energy = energy_function(pixel_modes, pixel, inv_camera_matrix, hypotheses[valid_index])
+                energies[valid_index] += int(energy>0.1)
+
+                if energy <= 0.1:
+                    pixel_inliers[valid_index].append(np.array([index, pixel[0], pixel[1]]))
+        # #TODO: change of the order of the loops
+        # for i,valid_index in enumerate(valid_hypotheses_indices): #tqdm(range(valid_hypotheses), desc = "Calculate energy"):
+                
+        #         errors[valid_index] = 0
+        #         hypothesis = hypotheses[valid_index]
+                
+        #         for pixel_index in range(pixel_batch.shape[0]):                    
+        #             depth = image[pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], 3]
+        #             pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
+                    
+        #             pixel_modes = modes[:,pixel_index,:]
+                    
+        #             #check if more than 0 modes are not none and remove them
+        #             inv_c = ~np.isfinite(pixel_modes)
+        #             if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
+        #                 pixel_modes = pixel_modes[np.isfinite(pixel_modes)[:,0],:]
+        #             #all modes are none skip pixel
+        #             elif np.any(~np.isfinite(pixel_modes)):
+        #                 if i == 0:
+        #                     invalid += 1
+        #                 continue
+        #             if depth == 65535:
+        #                 if i == 0:
+        #                     invalid += 1
+        #                 continue
+                    
+        #             pixel_modes = np.append(pixel_modes, np.ones((pixel_modes.shape[0], 1)), axis = 1)
+                    
+        #             energy = energy_function(pixel_modes, pixel, inv_camera_matrix, hypothesis)
+        #             errors[i] += energy
+        #             energies[valid_index] += int(energy>0.1)
+
+        #             if energy <= 0.1:
+        #                 pixel_inliers[valid_index].append(np.array([index, pixel[0], pixel[1]]))
+        print(time.time() - t1)
+        total_points += (batch_size - invalid)
+                
+        sorted_energy_indices = np.argsort(energies[valid_hypotheses_indices])       
+        
+        half_len = int(len(sorted_energy_indices) // 2)
+        lower_half_indices = valid_hypotheses_indices[sorted_energy_indices[:half_len]]
+        
+        #check if hypothesis has inlier
+        if len(valid_hypotheses_indices) == len(energies):
+            mask = energies[lower_half_indices] < batch_size - invalid
+            lower_half_indices = lower_half_indices[mask]
         
         #remove half of the hypotheses with a high energy
-        tmp = []
-        for index in half_energie_index:            
-            tmp.append(hypotheses[index])
+        # tmp = []
+        # for i in lower_half_indices:            
+        #     tmp.append(hypotheses[i])
         
-        hypotheses = tmp
-        print(energies)
+        # hypotheses = tmp
+        
+       
         #refine hypotheses based on inlieres and kabsch
         i = 0
-        pbar = tqdm(total = sorted_energy_index[:upper_half].shape[0], desc = "optimize hypotheses")
-        for hypothesis_index in sorted_energy_index[:upper_half]:
-            pixels = pixel_batch[pixel_inliers[hypothesis_index],:]
+        
+        pbar = tqdm(total = lower_half_indices.shape[0], desc = "optimize hypotheses")
+        t1 = time.time()
+        for hypothesis_index in lower_half_indices:
+            pixels = np.asarray(pixel_inliers[hypothesis_index])
             if pixels.shape[0] == 0:
-                i += 1
-                pbar.update(1)
+                # pbar.update(1)
                 continue
+            
             modes = forest.evaluate(pixels, data_tuple)
             
             depths = image[pixels[:, 1], pixels[:, 2], 3]
 
-            camera_space_cords = np.zeros(pixels.shape)
-            camera_space_cords[:,:2] = pixels[:,1:]
-            camera_space_cords[:,2] = depths
+            x_y_h = np.zeros(pixels.shape)
+            x_y_h[:,:2] = pixels[:,1:]
+            x_y_h[:,2] = np.ones((pixels.shape[0]))
+            
+            camera__scene_coord = (inv_camera_matrix @ x_y_h.T).T * depths[:,np.newaxis] / 1000
             
             #sample random mode indices
             random_modes = sample_random_modes(modes)
@@ -269,33 +312,37 @@ def optimize(forest, image, k, index, data_tuple, inv_camera_matrix, number_pixe
             mask = ~np.any(~mask, axis = 1)
             
             random_modes = random_modes[mask,:]
-            camera_space_cords = camera_space_cords[mask,:]
+            x_y_h = x_y_h[mask,:]
             
-            get_transformation_matrix(camera_space_cords, random_modes)
-            hypotheses[i] = get_transformation_matrix(camera_space_cords, random_modes)
-            
-            i += 1
+            hypotheses[hypothesis_index] = get_transformation_matrix(camera__scene_coord, random_modes)           
+
             pbar.update(1)
         pbar.close()
-    return hypotheses[0], energies[0]
+        print(f'optimize time {time.time() - t1}')
+
+        valid_hypotheses_indices = lower_half_indices
+    return hypotheses[valid_hypotheses_indices[0]], energies[valid_hypotheses_indices[0]]
         
     
 
-def sample_pixel_batch(batch_size, image_shape, index):
-    x = np.linspace(0, image_shape[0] - 1, image_shape[0])
-    y = np.linspace(0, image_shape[1] - 1, image_shape[1])
-    pixel_batch = np.zeros((batch_size, 3), dtype = np.uint16)
-    
-    for i in range(batch_size):
-        xx = np.random.randint(0, image_shape[0])
-        yy = np.random.randint(0, image_shape[1])
+def sample_pixel_batch(batch_size, image_shape, index, depth):
+
+    coordinate_range = np.arange(image_shape[0] * image_shape[1], dtype=np.int32)
+    i = 0
+    p_s = np.zeros((batch_size, 3), dtype=np.int32)
+    while i < batch_size:
+        x_y_s = np.random.choice(coordinate_range, 1, replace=False)
+        x_s = x_y_s // 480
+        y_s = x_y_s % 480
         
-        pixel_batch[i,:] = np.array([index, x[xx], y[yy]])
-        
-    return pixel_batch
+        if depth[x_s, y_s] != 65535 and depth[x_s, y_s] != 0:
+            p_s[i,:] = index, x_s, y_s
+            i += 1
+    return p_s
 
 
 def sample_random_modes(modes):
+
     modes = np.asarray(modes)
 
     upper_limit = modes.shape[0]
@@ -304,8 +351,8 @@ def sample_random_modes(modes):
    
     #sample random mode 
     for i in range(modes.shape[1]):
-        random_mode_index = np.random.randint(0, upper_limit)
-        mode = modes[random_mode_index, i, :]
+        random_tree_index = np.random.randint(0, upper_limit)
+        mode = modes[random_tree_index, i, :]
         output[i,:] = mode
     
     return output
@@ -349,25 +396,54 @@ def get_transformation_matrix(a,b):
     output[3,3] = 1
     
     q = (output @ np.append(a, ones, axis = 1).T).T
+    mean_distance = np.mean(np.linalg.norm(b - q[:, :3], axis = 1))
+    # print(f'Distance: \n {np.linalg.norm(b - q[:, :3], axis = 1)}')
+    # points = np.vstack((b,q[:,:3],a))
     
-    print(f'Distance: \n {np.linalg.norm(b - q[:, :3], axis = 1)}')
-    points = np.vstack((b,q[:,:3],a))
+    # colors = np.zeros((9,3))
+    # # colors[3:6,:] = np.repeat(np.array([[1, 0, 0]],),3, axis = 0)
+    # colors[0,:] = 0, 1, 0
+    # colors[1,:] = 1, 0, 0
+    # colors[2,:] = 0, 0, 1
     
-    colors = np.zeros((9,3))
-    # colors[3:6,:] = np.repeat(np.array([[1, 0, 0]],),3, axis = 0)
-    colors[3,:] = 0, 0.58, 0.3
-    colors[6,:] = 0, 0.58, 0.3
-    colors[4,:] = 1, 0, 0
-    colors[7,:] = 1, 0, 0
-    colors[5,:] = 0.58, 0, 0.58
-    colors[8,:] = 0.58, 0, 0.58
+    # colors[3,:] = 0,0.6,0
+    # colors[4,:] = 0.6, 0, 0
+    # colors[5,:] = 0,0,0.6
+    
+    # colors[6,:] = 0,0.3,0
+    # colors[7,:] = 0.3, 0, 0
+    # colors[8,:] = 0,0,0.3
+
 
     # colors[6:,:] = np.repeat(np.array([[0, 0, 1]],),3, axis = 0)
 
-    draw_pointcloud(points, colors)
+    # draw_pointcloud(points, colors)
     
     return output
 
+def get_initial_transformation(number_pixels, index, forest, data_tuple, shape, image, inv_camera_matrix, threshold = 0.05):
+    forest_modes, pixels = get_random_pixel_modes(number_pixels, index, forest, data_tuple, shape, image)       
+        
+    test = np.zeros_like(pixels, dtype=np.float64)
+    test[:,:2] = pixels[:,1:] #* pixels[:,2][:,np.newaxis]
+    test[:,2] = np.ones(test.shape[0])
+
+    
+    ones = np.ones((test.shape[0], 1))
+    
+    for i in range(test.shape[0]):
+        camera_coords = (inv_camera_matrix @ test[i,:].T)
+        test[i,:] = camera_coords * pixels[i, 2] / 1000
+    
+    #transformation  mean <0.05 ? else resample
+    transformation_matrix, dist = get_transformation_matrix(test[:,:3], forest_modes)
+    if dist > 0.01:
+        print("Distance too big resample")
+        return get_initial_transformation(number_pixels, index, forest, data_tuple, shape, image, inv_camera_matrix)
+    else:
+        print('######################################## Its a match ########################################')
+
+        return transformation_matrix
 
 
 def draw_pointcloud(np_pointcloud, np_colors):
