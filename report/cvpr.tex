@@ -31,7 +31,7 @@
 
 \author{Falk Ebert\\
 \tt 4018276\\
-{\tt\small f.ebert@stud.uni-heidelberg.de}
+{\tt\small falk.ebert@stud.uni-heidelberg.de}
 % For a paper whose authors are all at the same institution,
 % omit the following lines up until the closing ``}''.
 % Additional authors and addresses can be added with ``\and'',
@@ -40,15 +40,15 @@
 \and
 Jason Pyanowski\\
 \tt 3663907\\
-{\tt\small j.pyanowski@stud.uni-heidelberg.de}
+{\tt\small jason.pyanowski@stud.uni-heidelberg.de}
 \and
 Marven Hinze\\
 \tt 3664283\\
-{\tt\small m.hinze@stud.uni-heidelberg.de}
+{\tt\small marven.hinze@stud.uni-heidelberg.de}
 \and
 Nadine Theissen\\
 \tt 3475402\\
-{\tt\small n.theissen@stud.uni-heidelberg.de}
+{\tt\small nadine.theissen@stud.uni-heidelberg.de}
 }
 
 \maketitle
@@ -91,10 +91,9 @@ Kinect camera, depth information for each pixel is extracted. The resolution of 
 bit RGB-images is $640\times480$ pixels and the corresponding $16$ bit depth map is given 
 in millimeters. For each image a $4\times4$ ground truth camera pose in homogenous coordinates 
 is provided, which allows to validate the estimated camera pose matrix for a given image. 
-Each dataset is split randomly into train and test according to the relative sizes in~\cite[Table 1]{shotton2013}. 
+Each dataset is split randomly into train and test. 
 
-% WIP FALK:
-Our data consists of a number of samples $\{(\boldsymbol{p}_i, \boldsymbol{w}_i)\}$ with
+Based on that, our data set is composed of a number of samples $\{(\boldsymbol{p}_i, \boldsymbol{w}_i)\}$ with
 $\boldsymbol{p}_i = (x_l, y_l)_i$ and $\boldsymbol{w}_i = (x_s, y_s, z_s)_i$ where the subscripts
 $l$ and $s$ denote image pixel coordinates and scene coordinates respectively.\\
 
@@ -145,14 +144,12 @@ The objective function used here optimizes for a reduction in variance of the ta
 responses (i.e. "wants the tree to group together points with similar scene coordinates").
 Defining $W_n = \{ \boldsymbol{w}_i \, | \, (\boldsymbol{p}_i, \boldsymbol{w}_i) \in S_n \}$ this
 objective can be mathematically expressed as:
-
 \begin{multline}
 	Q(W_\text{tot}, \theta) =
 		\text{Var}(W_\text{tot})\, - \sum_{d\,\in\{\text{left,\,right}\}}
 			\dfrac{|W_d(\theta)|}{|W_\text{tot}|} \text{Var}(W_d(\theta))\\
 	\text{with} \hspace{5mm} \text{Var}(W) = |W|^{-1} \sum_{\boldsymbol{w}\in W} ||\boldsymbol{w} - \bar{\boldsymbol{w}}||_2^2
 \end{multline}
-
 Training the complete tree then involves choosing a set of images from which a number
 of sample pixels is drawn. These samples are then evaluated (i.e. split into left and right set)
 by the tree's root node for a number of parameter-sets. For each set of parameters, the
@@ -199,11 +196,9 @@ $f_{\theta}(\boldsymbol{p}) \leq \tau$.
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation}
-To validate the results, estimated camera poses are compared in terms of their translational and
-angular error versus the true camera poses. The findings for each scene are subsequently compared
-to the results of~\cite{shotton2013}. 
 
-\subsection{Metrics}
+
+\subsection{Metrics} \label{subsec:metrics}
 To evaluate the estimated camera poses, the translational and angular error with respect to the 
 ground truth camera poses is measured. In particular, a translational error of at 
 most $5$cm and angular error of at most $5^{\circ}$ is considered to be a correctly predicted pose. 
@@ -212,7 +207,7 @@ Let the estimated pose matrix $H_{est}$ and the ground truth $H_{gt}$ be $4 \tim
 in homogeneous coordinates that encode the location and orientation of the camera in the world 
 coordinate system. To measure the translational offset between them, the translation vectors 
 $\boldsymbol{t_{est}}, \boldsymbol{t_{gt}} \in \mathbb{R}^3$ of the matrices are used.
-By applying the $L_2$-norm to the translation vectors, the translational error is obtained by
+By applying the $\ell^2$-norm to the translation vectors, the translational error is obtained by
 \begin{align}
     \varepsilon_t &= \sqrt{\sum_{x,y,z}||\boldsymbol{t_{est}} - \boldsymbol{t_{est}}||^2}.
 \end{align}
@@ -226,17 +221,81 @@ error measure and defined as
 \end{align}
 where $tr(R)$ is the trace of a matrix.
 
-\subsection{??}
-Based on the metrics stated in the previous section, the amount of correctly estimated camera poses for each scene
-is calculated. Therefore, the forest is evaluated with unseen images from the test data set and consecutive
-RANSAC optimization predicts a camera pose for each image. These predictions are then compared to the 
-ground truth camera poses and the amount of correctly classified poses recorded.
-
-These findings are then compared to the results of~\cite{shotton2013}. 
+% \subsection{??}
+% das vllt in die einleitung und ein chapter für die metrics vom tree 
 
 %-------------------------------------------------------------------------
 \section{Results}
+In this section we present and evaluate our findings. For each scene a forest is trained with the hyperparameters given in 
+Table~\ref{tab:params} and the 3D world coordinates are predicted by using unseen images from the test data set. To 
+validate the results, the predicted coordinates of the forest are compared to the known ground truths using the $\ell^2$-norm and
+is shown in the following subsection.
+\begin{table}[h!]
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Hyperparameter & Value \\
+	\hline\hline
+	Number of Trees & $5$ \\
+	Max Tree Depth & $16$ \\
+	Batch Size & $500$ \\
+	Pixel Samples per Image & $5000$ \\
+	Parameter Samples per Image  & $1024$ \\
+	Feature Type & Depth / DA-RGB \\
+	\hline
+	\end{tabular}
+	\end{center}
+	\label{tab:params}
+	\caption{Hyperparameters used for training forests.}
+\end{table}
 
+Based on the predicted 2D-3D correspondencies of the forest, the camera pose is estimated by the RANSAC optimization.
+For each image in the test data set, the respective camera pose is obtained and evaluated in terms of the translational 
+and angular error with respect to the true camera poses. The findings for each scene are subsequently compared
+to the results of~\cite{shotton2013}. Thereby, the amount of correctly classified camera poses is taken as a measure 
+and is explained in Subsection~\ref{subsec:metrics}.
+
+
+%At first, each trained forest (per scene) is analyzed in 
+%terms of the ability to find 2D-3D correspondencies. Then, the estimated camera poses are evaluated as described 
+%in~\ref{subsec:labels} and compared to the findings in~\cite{shotton2013}.
+
+
+\subsection{Image to World Point Correspondencies}
+Predicting the 3D world coordinates using 'Depth Adaptive RGB' features on the test data set, the forests exhibit 
+$91.2\%$ valid coordinates on average. This implies that a forest is capable of finding correspondencies between 
+image and world coordinates. However, the average deviations shown in Table~\ref{tab:forest-error} indicate rather 
+large deviations from the ground truth. % aber nicht schlimm, weil ransac ja optimiert (?), earum aber so groß? vgl mit Paper
+
+% table deviations
+\begin{table}[h]
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Scene & average deviation [m]\\
+	\hline\hline
+	Chess 		&   $7.30 \pm 1.34$	\\
+	Fire 		& 	$7.30 \pm 1.34$	\\
+	Heads 		& 	$7.30 \pm 1.34$	\\
+	Office 		& 	$7.30 \pm 1.34$	\\
+	Pumpkin 	& 	$7.30 \pm 1.34$	\\
+	Red Kitchen & 	$7.30 \pm 1.34$	\\
+	Stairs 		& 	$7.30 \pm 1.34$	\\
+	\hline
+	\end{tabular}
+	\end{center}
+	\label{tab:forest-error}
+	\caption{Average deviation in meters between the predicted 3D world cordinates of the forest trained with 
+	'Depth Adaptive RGB' features and the respective ground truths for each scene using the $\ell^2$-norm.}
+\end{table}
+
+
+
+\subsection{Camera Pose Predictions}
+tranlational, angular error
+plots
+
+\section{Conclusion}
 
 {\small
 \bibliographystyle{ieee_fullname}
