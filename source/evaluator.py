@@ -142,7 +142,7 @@ class SceneCoordinateEvaluator:
         predictions = np.ndarray((tree_predictions[0].shape[0] * len(tree_predictions), 3), dtype=np.float64)
 
         for pred in tree_predictions:
-            valid_mask = ~np.any(pred == -np.inf, axis=1)
+            valid_mask = ~np.any(pred == np.inf, axis=1)
             valid_predictions = np.sum(valid_mask)
             predictions[valid_predictions_tot:valid_predictions_tot+valid_predictions] = pred[valid_mask]
             valid_predictions_tot += valid_predictions
@@ -168,6 +168,6 @@ class SceneCoordinateEvaluator:
         errors = []
 
         for pred in tree_predictions:
-            valid_mask = ~np.any(pred == -np.inf, axis=1)
+            valid_mask = ~np.any(pred == np.inf, axis=1)
             errors.append(np.linalg.norm(ground_truth[valid_mask] - pred[valid_mask], axis=1))
         return errors

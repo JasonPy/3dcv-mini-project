@@ -19,7 +19,7 @@ def param_sampler(num_samples: int) -> np.array:
     for each node.
     """
     rgb_coords = np.array([0, 1, 2])
-    tau = uniform(-10, 10, num_samples)
+    tau = uniform(-100, 100, num_samples)
     delta1x = uniform(-130, 130, num_samples)
     delta1y = uniform(-130, 130, num_samples)
     delta2x = uniform(-130, 130, num_samples)
@@ -47,15 +47,13 @@ def objective_reduction_in_variance (
     set_right: DataHolder
         The set, which got split to the right
     """
-
-    num_samples = len(w_complete)
-    if num_samples == 0:
-        # if no samples present, bad split
-        return -np.inf
+    if len(w_complete) == 0 or len(w_left) == 0 or len(w_right) == 0:
+        # if no samples present or empty node, bad split
+        return np.inf
     
     # get fraction of samples in left, right split
-    frac_left = len(w_left) / num_samples
-    frac_right = len(w_right) / num_samples
+    frac_left = len(w_left) / len(w_complete)
+    frac_right = len(w_right) / len(w_complete)
 
     # get variance of left, right split
     var_left = 0 if frac_left == 0 else vector_3d_array_variance(w_left)
@@ -153,8 +151,8 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         # Calculate lengths
         len_invalid = np.sum(~mask_valid)
-        len_left = np.sum(mask_split)
-        len_right = np.sum(~mask_split)
+        len_left = np.sum(~mask_split)
+        len_right = np.sum(mask_split)
 
         # Report training progress
         _delta_split = millis() - _delta_get_features - _ms_start
@@ -238,9 +236,9 @@ class Node:
         if self.is_leaf():
             return np.full((len(samples), self.response.shape[0]), self.response)
         else:
-            outputs = np.full((len(samples), 3), -np.inf)
+            outputs = np.full((len(samples), 3), np.inf)
             mask_valid, mask_split = get_features_for_samples(images_data, samples, self.params, tree.feature_type)
-            samples_valid, _ = split_set(samples, mask_valid)
+            _, samples_valid = split_set(samples, mask_valid)
             split_left, split_right = split_set(samples_valid, mask_split)
             
             left_child = tree.nodes[self.node_id_left]
@@ -249,8 +247,8 @@ class Node:
             response_left = left_child.evaluate(images_data, split_left, tree)
             response_right = right_child.evaluate(images_data, split_right, tree)
             outputs_masked = outputs[mask_valid].copy()
-            outputs_masked[mask_split] = response_left
-            outputs_masked[~mask_split] = response_right
+            outputs_masked[~mask_split] = response_left
+            outputs_masked[mask_split] = response_right
             outputs[mask_valid] = outputs_masked
             return outputs
 
