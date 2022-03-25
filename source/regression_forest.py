@@ -7,7 +7,7 @@ from numba import njit, jit, prange
 from numpy.random import choice, uniform
 from tqdm import tqdm
 
-from feature_extractor import FeatureType, get_features_for_samples
+from feature_extractor import FeatureType, get_features_for_samples, get_features_for_two_samples
 from processing_pool import ProcessingPool
 from utils import get_mode, vector_3d_array_variance, split_set, millis
 from data_loader import DataLoader
@@ -37,7 +37,6 @@ def objective_reduction_in_variance (
     """
     Tree training objective function. Evaluates the fitness of the split according to the
     reduction in variance criterium (see 2.4 forest training)
-
     Parameters
     ----------
     set_complete: DataHolder
@@ -51,7 +50,7 @@ def objective_reduction_in_variance (
     num_samples = len(w_complete)
     if num_samples == 0:
         # if no samples present, bad split
-        return -np.inf
+        return np.inf
     
     # get fraction of samples in left, right split
     frac_left = len(w_left) / num_samples
@@ -68,7 +67,6 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
     """
     Calculate the scores according to the best split with respect to
     the parameter samples. 
-
     PARAMETERS
     ----------
     image_data: np.array
@@ -84,7 +82,12 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
         mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_samples[i], feature_type)
         w_s_valid = w_s[mask_valid]
         set_left, set_right = split_set(w_s_valid, mask_split)
-        scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
+        
+        #check if split is invalid if so set energy to inf
+        if set_left.shape[0] == 0 or set_right.shape[0] == 0:
+            scores[i] = np.inf
+        else:
+            scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
     return scores
 
 class TreeWorkerResult:
@@ -167,9 +170,83 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
         elif len_right == 0 or len_left == 0:
             # All samples are split to one side -> this should be a leaf node
-            is_leaf_node = True
-            response = get_mode(w_s_valid)
-            result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = response)
+            splitr_len = 0
+            splitl_len = 0
+            if len_left == 2 or len_right == 2:
+                while splitr_len == 0 or splitl_len == 0:
+                    param_samples = param_sampler(tree.num_param_samples)
+                    
+                    mask_valid, mask_split, tau = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
+                    # param_samples[0] = tau
+                    
+                    scores = calculate_scores_for_params(
+                    image_data = image_data,
+                    p_s = p_s,
+                    w_s = w_s,
+                    param_samples = param_samples,
+                    objective_function = tree.objective_function,
+                    feature_type = tree.feature_type)
+
+                    _delta_get_features = millis() - _ms_start
+                    
+                    # Find best parameter and calculate split (again, I know)
+                    max_score_index = np.argmin(scores)
+                    best_params = param_samples[max_score_index]
+                    mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
+                        
+                    splitl_len = np.sum(mask_split)
+                    splitr_len = np.sum(~mask_split)
+                    
+                    w_s_valid = w_s[mask_valid]
+                    w_s_left, w_s_right = split_set(w_s_valid, mask_split)   
+
+                    p_s_valid = p_s[mask_valid]
+                    p_s_left, p_s_right = split_set(p_s_valid, mask_split)
+                    
+                    result = TreeWorkerResult(
+                        node_id = node_id,
+                        is_leaf = False,
+                        params = best_params,
+                        set_left = (p_s_left, w_s_left),
+                        set_right = (p_s_right, w_s_right),
+                        lengths = (len_data, len_invalid, len_left, len_right))
+            else:
+                while splitr_len == 0 or splitl_len == 0:
+    
+                    param_samples = param_sampler(tree.num_param_samples)
+                    scores = calculate_scores_for_params(
+                        image_data = image_data,
+                        p_s = p_s,
+                        w_s = w_s,
+                        param_samples = param_samples,
+                        objective_function = tree.objective_function,
+                        feature_type = tree.feature_type)
+
+                    _delta_get_features = millis() - _ms_start
+                    
+                    # Find best parameter and calculate split (again, I know)
+                    max_score_index = np.argmin(scores)
+                    best_params = param_samples[max_score_index]
+                    mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
+
+                    splitl_len = np.sum(mask_split)
+                    splitr_len = np.sum(~mask_split)
+
+                    # Split the input data        
+                    w_s_valid = w_s[mask_valid]
+                    w_s_left, w_s_right = split_set(w_s_valid, mask_split)
+                    p_s_valid = p_s[mask_valid]
+                    p_s_left, p_s_right = split_set(p_s_valid, mask_split)
+                    if splitr_len != 0 and splitl_len != 0:
+                        result = TreeWorkerResult(
+                            node_id = node_id,
+                            is_leaf = False,
+                            params = best_params,
+                            set_left = (p_s_left, w_s_left),
+                            set_right = (p_s_right, w_s_right),
+                            lengths = (len_data, len_invalid, len_left, len_right))
+
+                
 
         else:
             # Report training progress on invalid nodes, trigger next node training
@@ -194,7 +271,6 @@ class Node:
     def __init__(self, node_id: str, depth: int = 0):
         """
         Create a new node with a given feature_function and initial parameters
-
         Parameters
         ----------
         feature_type: FeatureType
@@ -220,7 +296,6 @@ class Node:
         tree: 'RegressionTree'):
         """
         Evaluate the tree recursively starting at this node.
-
         Parameters
         ----------
         samples: DataHolder
@@ -230,7 +305,6 @@ class Node:
         -------
         any
             The response at the leaf node. Evaluated recursively
-
         """
         if (len(samples) == 0):
             return samples
@@ -303,12 +377,12 @@ class RegressionTree:
             self.processing_pool.enqueue_work(train_left_work_data)
             self.processing_pool.enqueue_work(train_right_work_data)
 
-            len_data, len_invalid, len_left, len_right = result.lengths
-            _delta_get_features, _delta_split = result.timings
-            _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
-            _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
-            kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
-            tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
+            # len_data, len_invalid, len_left, len_right = result.lengths
+            # _delta_get_features, _delta_split = result.timings
+            # _str_split = f'| {len_data:10} in | {len_invalid:8} inval | {len_left:8} left | {len_right:8} right | {_delta_split:4.0F}ms split |'
+            # _str_features = f'{len_data * self.num_param_samples:13} samples | {_delta_get_features:8.0F}ms eval |'
+            # kilo_it_per_sec_str = f'{(len_data * self.num_param_samples) / (_delta_get_features + _delta_split):.1F}'
+            # tqdm.write(f'Node trained         {_str_split} {_str_features} {kilo_it_per_sec_str:7}Kit/s | {node.id:16} id |')
 
         # I don't really know if this is necessary. I want pointers :(
         self.nodes[result.node_id] = node
@@ -343,7 +417,8 @@ class RegressionTree:
         """
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
-
+        np.save(f"p_s", data_samples[0],allow_pickle=True, fix_imports=True)
+        np.save(f"w_s", data_samples[1],allow_pickle=True, fix_imports=True)
         tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples') # images * samples_per_img
         self.total_iterations = len(data_samples[0]) * (self.max_depth + 1)
         self.progress = 0
@@ -435,7 +510,6 @@ class RegressionForest:
         Train this forest with the list of data samples given. The complete list of samples
         will be split among the self.num_trees trees and each tree trained on a subset of the
         samples.
-
         Parameters
         ----------
         data: DataHolder

@@ -10,13 +10,13 @@ from utils import save_object
 
 # BASE PARAMETERS
 TIMESTAMP = datetime.now()
-DATA_PATH = '../data'
-OUTPUT_PATH = '../output'
-SCENE = 'pumpkin'
+DATA_PATH = '/home/marven/Programs/Studium/CV-Project/3dcv-mini-project/data'
+OUTPUT_PATH = '/home/marven/Programs/Studium/CV-Project/3dcv-mini-project/output'
+SCENE = 'chess'
 
 # TRAINING PARAMETERS
 TEST_SIZE = 1/3
-NUM_TREES = 5
+NUM_TREES = 1
 TREE_MAX_DEPTH = 16
 NUM_TRAIN_IMAGES_PER_TREE = 500
 NUM_SAMPLES_PER_IMAGE = 5000
