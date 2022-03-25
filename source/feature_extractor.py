@@ -42,9 +42,7 @@ def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_
     depths = array_for_indices_3d(image_data[1], p_s)
     depths_mask_valid = get_valid_depth_mask(depths)
 
-    # maintain only valid depths and corresponding sample pixels
-    p_s = p_s[depths_mask_valid,:]
-    depths = depths[depths_mask_valid] / 1000 # convert to meters
+    depths = depths / 1000 # convert to meters
 
     # calculate the shifted coordinates
     p_delta1x = (p_s[:,1] + delta1x // depths).astype(np.int16)
@@ -127,6 +125,13 @@ def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index
     
     #switch x,y for method call since image is transposed
     xx, yy = np.meshgrid(x, y, indexing="ij")
+
+    depths = image_data[1][index,:,:]
+    valid_depths_mask = ~((depths == INVALID_DEPTH_VALUE) | (depths == 0))
+    
+    xx = xx[valid_depths_mask]
+    yy = yy[valid_depths_mask]
+
     xx = xx.flatten().astype(np.int32)
     yy = yy.flatten().astype(np.int32)
     

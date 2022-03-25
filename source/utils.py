@@ -31,8 +31,8 @@ def array_for_indices_4d(array: np.array, indices: np.array):
 
 @njit
 def split_set(set: np.array, mask: np.array):
-    set_left = set[~mask]
-    set_right = set[mask]
+    set_left = set[mask]
+    set_right = set[~mask]
     return set_left, set_right
 
 @njit
