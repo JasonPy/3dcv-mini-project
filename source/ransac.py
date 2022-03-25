@@ -1,446 +1,376 @@
 from distutils.log import error
-import faulthandler
 from operator import inv
 from random import randint, random
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
-import faulthandler
-import open3d
-from processing_pool_ransac import ProcessingPool 
+import utils
+
+from typing import Tuple
+
 
 INVALID_DEPTH_VALUE = 65535
 
+class Ransac:
+    
+    def __init__(self, image_data: Tuple[np.array, np.array, np.array], forest, indices: np.array, number_pixles = 10, batch_size = 500, k = 1024, top_hat_width = 0.1):
+        """_summary_
 
-def initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, inv_camera_matrix, tqdm_pbar):
-    """
-    Generate k hypotheses based on n (number_pixels) pixels, using the kabsch algorithm
+        Args:
+            image_data (Tuple[np.array, np.array, np.array]): The image data to evaluate
+            forest : forest for evaluation
+            indices (np.array): the indices in image_data to evaluate
+            number_pixles (int, optional):  Defaults to 10.
+            batch_size (int, optional): Number of Pixels for hypotheses evaluation. Defaults to 500.
+            k (int, optional): Number of hypotheses. Defaults to 1024.
+            top_hat_width (float, optional): Allowed Error. Defaults to 0.1.
+        """
+        self.image_data = image_data
+        self.forest = forest
+        self.indices = indices
+        self.inv_camera_matrix = np.linalg.inv(utils.get_intrinsic_camera_matrix())
+        self.number_pixels = number_pixles
+        self.batch_size = batch_size
+        self.k = k
+        self.top_hat_width = top_hat_width
+    
+    
+    def find_poses(self):
+        result = np.zeros(( self.indices.shape[0], 4, 4))
+        for index in self.indices:
+            pose, e = self.optimize(index)
+            result[index,:,:] = pose
+            
+        return result
+    
+    def optimize(self, index: int):
+        """_summary_
 
-    Args:
-        image (ndarray): is used to retrieve the depth information
-        number_pixels (int): the number of pixel that are used for the generation
-        k (int): The number of hypotheses
-        index : the position of the image in the data tuple
+        Args:
+            index (int): Index of the image, for finding camera pose
+
+        Returns:
+            hypothesis (np.array): Estimated hypothesis
+        """
+        pbar = tqdm(total = self.k, desc="Intialize hypotheses")
         
-    Returns: 
-        array (4,4,k) : initial hypotheses stored along axis = 2
-    """
-    shape = image.shape
+        #initialize k camera hypotheses
+        hypotheses = self.initialize_hypotheses(index, pbar)    
+        pbar.clear()
+
+        #store for each pixel the modes    
+        pixel_inliers = {}
+        pixel_inliers_modes = {}
         
-    #generated hypotheses
-    hypotheses = np.zeros((4,4,k))
-    
-    x = np.linspace(0, shape[0] - 1, shape[0])
-    y = np.linspace(0, shape[1] - 1, shape[1])
-    
-    #switch x,y for method call since image is transposed
-    xx, yy = np.meshgrid(x, y, indexing="ij")
-    
-    depths = image[:,:,3]
-    valid_depths_mask = ~((depths == INVALID_DEPTH_VALUE) | (depths == 0))
-    
-    valid_x = xx[valid_depths_mask]
-    valid_y = yy[valid_depths_mask]
-    
-    for step in range(k):
-        forest_modes, random_pixels = get_random_pixel_modes(number_pixels, index, forest, data_tuple, shape, image, valid_x, valid_y)
-        pix = random_pixels[:,:2].astype(np.int32)
-        depths = data_tuple[1][index][pix[:,0], pix[:,1]]
+        valid_hypotheses_indices = np.arange(0, hypotheses.shape[2])
+
+        #initialize for each hypothese a list
+        for element in valid_hypotheses_indices:
+            pixel_inliers[element] = []
+            pixel_inliers_modes[element] = []
+
+        energies = np.zeros(len(valid_hypotheses_indices))
+        total_points = 0
+
+        forest_time = 0
+        while len(valid_hypotheses_indices) > 1:
+            #sample random set B of image coordinates
+            pixel_batch = self.sample_pixel_batch(index).astype(np.int32)
+
+            valid_depth_mask = ~((self.image_data[1][index, pixel_batch[:,1], pixel_batch[:,2]] == INVALID_DEPTH_VALUE) | (self.image_data[1][index, pixel_batch[:,1], pixel_batch[:,2]] == 0))
+            pixel_batch = pixel_batch[valid_depth_mask,:]
+            
+            modes = self.forest.evaluate(pixel_batch, self.image_data)
+            modes = np.asarray(modes)
+            
+            invalid = 0
+            t2 = time.time()
+
+            for pixel_index in range(pixel_batch.shape[0]):                    
+                depth = self.image_data[1][index, pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2]]
+                pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
+                
+                pixel_modes = modes[:,pixel_index,:]
+                tmp = modes[:,pixel_index, :]
+                #check if more than 0 modes are not none and remove them
+                inv_c = ~np.isfinite(pixel_modes)
+                if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
+                    pixel_modes = pixel_modes[np.isfinite(pixel_modes)[:,0],:]
+                #all modes are none skip pixel
+                elif np.any(~np.isfinite(pixel_modes)):
+                    invalid += 1
+                    continue
+
+                
+                pixel_modes = np.append(pixel_modes, np.ones((pixel_modes.shape[0], 1)), axis = 1)
+                pixel_tmp = pixel
+                pixel_tmp[2] = 1
+                camera_coords = self.inv_camera_matrix @ pixel_tmp * depth / 1000
+                
+                camera_coords_h = np.append(camera_coords, 1)[np.newaxis, :, np.newaxis]
+                camera_coords_h = np.repeat(camera_coords_h, hypotheses[:,:,valid_hypotheses_indices].shape[2], axis = 2)
+                
+                #matrix multiplication each column corresponds to one matrix multiplication
+                world_coordinates = np.sum(hypotheses[:,:,valid_hypotheses_indices] * camera_coords_h, axis = 1)[:3,:].T
+                world_coordinates = world_coordinates[:,:,np.newaxis]
+                
+                pixel_modes_tmp = np.swapaxes(pixel_modes[:,:3][np.newaxis, :,:],1, 2)
+                outlier__mask= np.min(np.sqrt(np.sum((world_coordinates - pixel_modes_tmp)**2, axis = 1)), axis = 1) > self.top_hat_width
+                energies[valid_hypotheses_indices] += outlier__mask
+                
+                for h_index in valid_hypotheses_indices[~outlier__mask]:
+                    pixel_inliers[h_index].append(np.array([index, pixel[0], pixel[1]]))
+                    pixel_inliers_modes[h_index].append(tmp)
+
+                    
+            sorted_energy_indices = np.argsort(energies[valid_hypotheses_indices])       
+            
+            half_len = int(len(sorted_energy_indices) // 2)
+            lower_half_indices = valid_hypotheses_indices[sorted_energy_indices[:half_len]]     
         
-        x_y_h = np.zeros_like(random_pixels, dtype=np.float64)
-        x_y_h[:,:2] = random_pixels[:,:2] #* pixels[:,2][:,np.newaxis]
-        x_y_h[:,2] = np.ones(x_y_h.shape[0])
-        pixe = np.hstack((pix, np.ones(pix.shape[0], dtype=np.int32)[:, np.newaxis]))
-        # calculate for each pixel the camera scene coordinates
-        for i in range(x_y_h.shape[0]):
-            camera_coords = (inv_camera_matrix @ x_y_h[i,:].T)
-            x_y_h[i,:] = camera_coords * random_pixels[i, 2] / 1000
+            #refine hypotheses based on inlieres and kabsch
+            
+            pbar = tqdm(total = lower_half_indices.shape[0], desc = "optimize hypotheses")
+            for hypothesis_index in lower_half_indices:
+                pixels = np.asarray(pixel_inliers[hypothesis_index])
+                if pixels.shape[0] == 0:
+                    pbar.update(1)                
+                    continue
+                
+                modes = pixel_inliers_modes[hypothesis_index]
+                modes = np.swapaxes(np.asarray(modes), 0, 1)
 
-        hypothesis = get_transformation_matrix(x_y_h[:,:3], forest_modes)
-         
-        hypotheses[:,:,step] = hypothesis
-        tqdm_pbar.update(1)
+                depths = self.image_data[1][index, pixels[:, 1], pixels[:, 2]]
 
-    return hypotheses
+                x_y_h = np.zeros(pixels.shape)
+                x_y_h[:,:2] = pixels[:,1:]
+                x_y_h[:,2] = np.ones((pixels.shape[0]))
+                
+                camera__scene_coord = (self.inv_camera_matrix @ x_y_h.T).T * depths[:,np.newaxis] / 1000
+                
+                #sample random mode indices
+                random_modes = self.sample_random_modes(modes)
+                
+                mask = np.isfinite(random_modes)
+                mask = ~np.any(~mask, axis = 1)
+                
+                random_modes = random_modes[mask,:]
+                camera__scene_coord = camera__scene_coord[mask,:]
+                
+                hypotheses[:,:,hypothesis_index] = self.get_transformation_matrix(camera__scene_coord, random_modes)           
 
+                pbar.update(1)
+            pbar.close()
 
-
-def get_random_pixel_modes(n, index, forest, data_tuple, shape, image, valid_xs, valid_ys):
-    """
-    Generate n random pixels and evaluate each pixel with the given forest.    
+            valid_hypotheses_indices = lower_half_indices
+        return hypotheses[:,:,valid_hypotheses_indices[0]], energies[valid_hypotheses_indices[0]]
     
-    Args:
-        n (int): the number of random pixels
-        index (int) : the index of the image in the data_tuple
-        forest (forest): Forest for the evaluation
-        data_tuple (Tuple(array, array, array)): First index contains rgb images, second index depth images, third positions contains poses
-        shape (_type_): _description_
-        image (_type_): _description_
-        valid_xs : valid x pixel values to sample from
-        valid_ys : valid y pixel values to sample from
+    def initialize_hypotheses(self, index: int, tqdm_pbar):
+        """
+        Intialize k hypotheses based on pixel camera coordinates and their forest predictions 
+        Args:
+            index (int): image index
+            tqdm_pbar (_type_): _description_
 
-    Returns:
-        modes : n random modes
-        pixles : n random pixles (x, y)
-    """
-    
-   
-    random_position = np.random.choice(valid_xs.shape[0], size= n, replace=True)
-    pixels_xs = valid_xs[random_position]
-    pixel_ys = valid_ys[random_position]
-    
-    random_pixels = np.hstack((np.repeat(index, n)[:,np.newaxis], pixels_xs[:, np.newaxis], pixel_ys[:,np.newaxis])).astype(np.int32)
-    random_pixels_depths = image[random_pixels[:,1], random_pixels[:,2], 3]
-    # depths = data_tuple[1][random_pixels[:,1], random_pixels[:,2]]
-    
-    predictions = forest.evaluate(random_pixels, data_tuple)
-
-    
-    modes, pixel_mask = sample_n_random_modes(predictions)
-    
-    if modes is None:
-        return get_random_pixel_modes(n, index, forest, data_tuple, shape, image, valid_xs, valid_ys)
-
-    random_pixels = random_pixels[pixel_mask,:]
-    modes = modes[:3, :]
-    random_pixels = random_pixels[:3,:]
-
-    
-    x_y_d = np.zeros(random_pixels.shape)
-    x_y_d[:,:2] = random_pixels[:,1:]
-    x_y_d[:,2] = random_pixels_depths[pixel_mask][:3]
-       
-    return modes, x_y_d
-
-
-def energy_function(predicted_positions, pixel, camera_hypothesis):
-    # energy_function(pixel_modes, camera_coords, hypotheses[:,:,valid_index])
-    """
-    Calculate the energy for a given hypothesis based on a top hat error functino with a width defined by top_hat_error_width
-
-    Args:
-        predicted_position (_type_): predicted position
-        pixel (_type_): 3d position, camera space
-        camera_hypothesis (_type_): _description_
-        inv_camera_matrix: the inverse camera matrix
-    """
-
-    t = np.append(pixel,1)
-    
-    top_hat_error_width = 2
-    min_distance = np.min(np.linalg.norm(predicted_positions[:,:3] - ((camera_hypothesis @ t).T)[:3], axis = 1))
+        Returns:
+            np.array(4,4,k): Hypotheses stored along axis = 2
+        """
+        shape = self.image_data[0][index].shape
+            
+        #generated hypotheses
+        hypotheses = np.zeros((4,4, self.k))
         
-    return min_distance
- 
+        x = np.linspace(0, shape[0] - 1, shape[0])
+        y = np.linspace(0, shape[1] - 1, shape[1])
+        
+        #switch x,y for method call since image is transposed
+        xx, yy = np.meshgrid(x, y, indexing="ij")
+        
+        #depths = image[:,:,3]
+        
+        depths = self.image_data[1][index,:,:]
+        valid_depths_mask = ~((depths == INVALID_DEPTH_VALUE) | (depths == 0))
+        
+        valid_x = xx[valid_depths_mask]
+        valid_y = yy[valid_depths_mask]
+        
+        for step in range(self.k):
+            forest_modes, random_pixels = self.get_random_pixel_modes(3, index, shape, valid_x, valid_y)
+            
+            random_pixels = random_pixels.astype(np.int32)
+            depths = self.image_data[1][index][random_pixels[:,0], random_pixels[:,1]]
 
-def optimize(forest, image, k, index, data_tuple, inv_camera_matrix, number_pixels = 10, batch_size = 500):
-    """
-    Generate k hypothesis based on n (number_pixels) pixels and optimize the hypotheses
+            x_y_h = np.hstack((random_pixels, np.ones(random_pixels.shape[0], dtype=np.int32)[:, np.newaxis]))
+            
+            # calculate for each pixel the camera scene coordinates
+            for i in range(x_y_h.shape[0]):
+                camera_coords = (self.inv_camera_matrix @ x_y_h[i,:].T)
+                x_y_h[i,:] = camera_coords * depths[i] / 1000
 
-    Args:
-        forest : The regression forest prediciting the modes.
-        image (_type_): _description_
-        k: the number of hypotheses
-        index : the position of the image in the data_tuple
-        data_tuple : Tuple[array, array, array] the rgb, depth image and camera pose
-        inv_camera_matrix : the inverse of the camera matrix
-        number_pixels (int, optional): The number of pixels that are used to calculate the inital hypotheses. Defaults to 3.
-        batch_size: The size of the batch used for the energy calculation.
-    """
-    pbar = tqdm(total = k, desc="Intialize hypotheses")
+            hypothesis = self.get_transformation_matrix(x_y_h[:,:3], forest_modes)
+            
+            hypotheses[:,:,step] = hypothesis
+            tqdm_pbar.update(1)
+
+        return hypotheses
+
+
+
+    def get_random_pixel_modes(self, n: int, index: int, shape, valid_xs: np.array, valid_ys: np.array):
+        """
+        Generate n random pixels and evaluate each pixel with the given forest.    
+
+        Args:
+            n (int): The number of random pixels
+            index (int): image index
+            shape (_type_): _description_
+            image (_type_): _description_
+            valid_xs (np.array): valid x values stored, as flatten array
+            valid_ys (np.array): valid y values stored, as flatten array
+
+        Returns:
+            _type_: _description_
+        """
+        
     
-    #initialize k camera hypotheses
-    init_time = time.time()
-    hypotheses = initialize_hypotheses(image, forest, number_pixels, k, data_tuple, index, inv_camera_matrix, pbar)
-    print(time.time() - init_time)
-    
-    pbar.clear()
-    faulthandler.enable()
-    pixel_inliers = {}
-    #store for each pixel the modes
-    pixel_inliers_modes = {}
-    errors = {}
-    
-    valid_hypotheses = len(hypotheses)
-    valid_hypotheses_indices = np.arange(0, hypotheses.shape[2])
+        random_position = np.random.choice(valid_xs.shape[0], size= n, replace=False)
+        pixels_xs = valid_xs[random_position]
+        pixel_ys = valid_ys[random_position]
+        
+        random_pixels = np.hstack((np.repeat(index, n)[:,np.newaxis], pixels_xs[:, np.newaxis], pixel_ys[:,np.newaxis])).astype(np.int32)
 
-    #initialize for each hypothese a list
-    for element in valid_hypotheses_indices:
-          pixel_inliers[element] = []
-          pixel_inliers_modes[element] = []
+        
+        predictions = self.forest.evaluate(random_pixels, self.image_data)
 
-    energies = np.zeros(len(valid_hypotheses_indices))
-    total_points = 0
-    # processing_pool = ProcessingPool(inv_camera_matrix, energy_function_worker)
+        
+        modes, pixel_mask = self.select_n_random_modes(predictions)
+        
+        if modes is None:
+            return self.get_random_pixel_modes(n, index, shape, valid_xs, valid_ys)
+
+        random_pixels = random_pixels[pixel_mask,:]
+        modes = modes[:3, :]
+        #omit index entry
+        random_pixels = random_pixels[:3,1:]
+        
+        return modes, random_pixels          
+        
+
+    def sample_pixel_batch(self, index):
+        
+        x,y = self.get_valid_coordinates(index)
+        random_position = np.random.choice(x.shape[0], size= self.batch_size, replace=False)
+
+        pixels_xs = x[random_position]
+        pixel_ys = y[random_position]
+                    
+        return np.stack((np.full(self.batch_size, index), pixels_xs, pixel_ys)).T
     
-    # work_queue = processing_pool.queue_work
-    # result_queue = processing_pool.queue_result
-    forest_time = 0
-    while len(valid_hypotheses_indices) > 1:
-        #sample random set B of image coordinates
-        t0 = time.time()
-        pixel_batch = sample_pixel_batch(batch_size, image.shape, index, image[:,:,3])
 
-        valid_depth_mask = ~((image[pixel_batch[:,1], pixel_batch[:,2],3] == INVALID_DEPTH_VALUE) | (image[pixel_batch[:,1], pixel_batch[:,2],3] == 0))
-        pixel_batch = pixel_batch[valid_depth_mask,:]
-        print(f"sample pixel {time.time() - t0}")
-        t1 = time.time()
-        modes = forest.evaluate(pixel_batch, data_tuple)
-        print(f"Forest time {time.time() - t1}")
-        forest_time += time.time() - t1
+    def get_valid_coordinates(self, index):
+        
+        depths = self.image_data[1][index,:,:]
+        shape = depths.shape
+        
+        x = np.linspace(0, shape[0] - 1, shape[0])
+        y = np.linspace(0, shape[1] - 1, shape[1])
+        
+        #switch x,y for method call since image is transposed
+        xx, yy = np.meshgrid(x, y, indexing="ij")      
+  
+        valid_depths_mask = ~((depths == INVALID_DEPTH_VALUE) | (depths == 0))
+        
+        valid_x = xx[valid_depths_mask]
+        valid_y = yy[valid_depths_mask]
+        
+        return valid_x, valid_y
+        
+    def select_n_random_modes(self, modes, n = 3):
+        """ Evalutes the modes. Checks if the modes are valid at least for n pixels. 
+
+        Args:
+            modes : predicted modes
+
+        Returns:
+            output : the valid modes as array (valid_pixels, 3)
+            mask : boolean mask indicates which pixels have a valid mode
+        """
         modes = np.asarray(modes)
         
-        invalid = 0
-        t2 = time.time()
-
-        for pixel_index in range(pixel_batch.shape[0]):                    
-            depth = image[pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], 3]
-            pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
-            
-            pixel_modes = modes[:,pixel_index,:]
-            tmp = modes[:,pixel_index, :]
-            #check if more than 0 modes are not none and remove them
-            inv_c = ~np.isfinite(pixel_modes)
-            if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
-                pixel_modes = pixel_modes[np.isfinite(pixel_modes)[:,0],:]
-            #all modes are none skip pixel
-            elif np.any(~np.isfinite(pixel_modes)):
-                invalid += 1
-                continue
-
-            
-            pixel_modes = np.append(pixel_modes, np.ones((pixel_modes.shape[0], 1)), axis = 1)
-            p = pixel
-            p[2] = 1
-            camera_coords = inv_camera_matrix @ p * depth / 1000
-            
-            camera_coords_h = np.append(camera_coords, 1)[np.newaxis, :, np.newaxis]
-            camera_coords_h = np.repeat(camera_coords_h, hypotheses[:,:,valid_hypotheses_indices].shape[2], axis = 2)
-            
-            #matrix multiplication each column corresponds to one matrix multiplication
-            world = np.sum(hypotheses[:,:,valid_hypotheses_indices] * camera_coords_h, axis = 1)[:3,:].T
-            world = world[:,:,np.newaxis]
-            pixel_modes_tmp = np.swapaxes(pixel_modes[:,:3][np.newaxis, :,:],1, 2)
-            a = np.min(np.sqrt(np.sum((world - pixel_modes_tmp)**2, axis = 1)), axis = 1) > 0.1
-            energies[valid_hypotheses_indices] += a
-
-            for h_index in valid_hypotheses_indices[~a]:
-                pixel_inliers[h_index].append(np.array([index, pixel[0], pixel[1]]))
-                pixel_inliers_modes[h_index].append(tmp)
-
-        print(f'Loop time {time.time() - t2}')
-        total_points += (batch_size - invalid)
+        modes_mask = np.isfinite(modes[:, :, 0])
+        
+        #indicates the columns with valid modes
+        valid_columns = np.any(modes_mask, axis = 0)
+        
+        #less than n pixel modes are valid
+        if np.sum(valid_columns, axis = 0) < n:
+            return None, None
                 
-        sorted_energy_indices = np.argsort(energies[valid_hypotheses_indices])       
+        output = np.zeros((np.sum(valid_columns, axis = 0), 3))
+    
+        #iterate over valid_columns and sample a random tree mode
+        for i, valid_column in enumerate(np.where(valid_columns == 1)[0]):
+            #g
+            indices = np.where(modes_mask[:,valid_column] == 1)[0]
+            random_tree_index = np.random.choice(indices, 1)
+            mode = modes[random_tree_index, valid_column, :]
+            output[i,:] = mode
         
-        half_len = int(len(sorted_energy_indices) // 2)
-        lower_half_indices = valid_hypotheses_indices[sorted_energy_indices[:half_len]]
+        return output, np.any(modes_mask, axis = 0)
+
+    def sample_random_modes(self, modes):
+
+        modes = np.asarray(modes)
+
+        upper_limit = modes.shape[0]
         
-        #check if hypothesis has inlier
-        if len(valid_hypotheses_indices) == len(energies):
-            mask = energies[lower_half_indices] < pixel_batch.shape[0] - invalid
-            lower_half_indices = lower_half_indices[mask]
+        output = np.zeros((modes.shape[1], 3))
+    
+        #sample random mode 
+        for i in range(modes.shape[1]):
+            random_tree_index = np.random.randint(0, upper_limit)
+            mode = modes[random_tree_index, i, :]
+            output[i,:] = mode
         
+        return output
+
+    def get_transformation_matrix(self, a,b):
+        """
+        Computes an affine transformation matrix based on the kabsch algorithm
+
+        Args:
+            a (array): matrix a, containing points (row wise)
+            b (array): matrix b, containing points (row wise)
+        """
+        #add homogenous coordinates
+        ones = np.ones((a.shape[0], 1))
+        # a = np.append(a, ones, axis = 1)
+        # b = np.append(b, ones, axis = 1)
+
+        #calculate centroid of the data   
+        centroid_a = np.mean(a, axis = 0)
+        centroid_b = np.mean(b, axis = 0) 
+
+        centered_a = a - centroid_a
+        centered_b = b - centroid_b
+
+        h = np.matmul(centered_a.T, centered_b)
         
-       
-        #refine hypotheses based on inlieres and kabsch
-        i = 0
+        u, s, v = np.linalg.svd(h)
+        d = np.sign(np.linalg.det(np.matmul(v.T, u.T)))
+        diag_matrix = np.diag(np.array([1,1,d]))
         
-        # pbar = tqdm(total = lower_half_indices.shape[0], desc = "optimize hypotheses")
-        t1 = time.time()
-        for hypothesis_index in lower_half_indices:
-            pixels = np.asarray(pixel_inliers[hypothesis_index])
-            modes = pixel_inliers_modes[hypothesis_index]
-            modes = np.swapaxes(np.asarray(modes), 0, 1)
-            # modes = forest.evaluate(pixels, data_tuple)
-            if pixels.shape[0] == 0:
-                print("No NO NO inlier")
-                continue
-            
-            # modes = forest.evaluate(pixels, data_tuple)
-            # check24 = np.sum(~(test == modes))
-            depths = image[pixels[:, 1], pixels[:, 2], 3]
-
-            x_y_h = np.zeros(pixels.shape)
-            x_y_h[:,:2] = pixels[:,1:]
-            x_y_h[:,2] = np.ones((pixels.shape[0]))
-            
-            camera__scene_coord = (inv_camera_matrix @ x_y_h.T).T * depths[:,np.newaxis] / 1000
-            
-            #sample random mode indices
-            random_modes = sample_random_modes(modes)
-            
-            mask = np.isfinite(random_modes)
-            mask = ~np.any(~mask, axis = 1)
-            
-            random_modes = random_modes[mask,:]
-            camera__scene_coord = camera__scene_coord[mask,:]
-            
-            hypotheses[:,:,hypothesis_index] = get_transformation_matrix(camera__scene_coord, random_modes)           
-
-        #     pbar.update(1)
-        # pbar.close()
-        print(f'\n optimize time {time.time() - t1}')
-
-        valid_hypotheses_indices = lower_half_indices
-    print(f'################# forest time : {forest_time}')
-    return hypotheses[:,:,valid_hypotheses_indices[0]], energies[valid_hypotheses_indices[0]]
+        #get rotation matrix
+        transformation_matrix = np.matmul(v.T, np.matmul(diag_matrix, u.T))
         
-    
-
-def sample_pixel_batch(batch_size, image_shape, index, depth):
-
-    coordinate_range = np.arange(image_shape[0] * image_shape[1], dtype=np.int32)
-    i = 0
-    # p_s = np.zeros((batch_size, 3), dtype=np.int32)
-    # while i < batch_size:
-    x_y_s = np.random.choice(coordinate_range, batch_size, replace=False)
-    x_s = x_y_s // 480
-    y_s = x_y_s % 480
+        #get translation part
+        translation = centroid_b - np.matmul(transformation_matrix, centroid_a)
         
-        # if depth[x_s, y_s] != 65535 and depth[x_s, y_s] != 0:
-        #     p_s[i,:] = index, x_s, y_s
-        #     i += 1
-    return np.stack((np.full(x_s.shape, index), x_s, y_s)).T
-
-def sample_n_random_modes(modes, n = 3):
-    """ Evalutes the modes. Checks if the modes are valid at least for n pixels. 
-
-    Args:
-        modes : predicted modes
-
-    Returns:
-        output : the valid modes as array (valid_pixels, 3)
-        mask : boolean mask indicates which pixels have a valid mode
-    """
-    modes = np.asarray(modes)
-    
-    modes_mask = np.isfinite(modes[:, :, 0])
-    
-    #indicates the columns with valid modes
-    valid_columns = np.any(modes_mask, axis = 0)
-    
-    #less than n pixel modes are valid
-    if np.sum(valid_columns, axis = 0) < n:
-        return None, None
-    
-    upper_limit = modes.shape[0]
-    
-    output = np.zeros((np.sum(valid_columns, axis = 0), 3))
-   
-    #iterate over valid_columns and sample a random tree mode
-    for i, valid_column in enumerate(np.where(valid_columns == 1)[0]):
-        #g
-        indices = np.where(modes_mask[:,valid_column] == 1)[0]
-        random_tree_index = np.random.choice(indices, 1)
-        mode = modes[random_tree_index, valid_column, :]
-        output[i,:] = mode
-    
-    return output, np.any(modes_mask, axis = 0)
-
-def sample_random_modes(modes):
-
-    modes = np.asarray(modes)
-
-    upper_limit = modes.shape[0]
-    
-    output = np.zeros((modes.shape[1], 3))
-   
-    #sample random mode 
-    for i in range(modes.shape[1]):
-        random_tree_index = np.random.randint(0, upper_limit)
-        mode = modes[random_tree_index, i, :]
-        output[i,:] = mode
-    
-    return output
-
-def get_transformation_matrix(a,b):
-    """
-    Computes an affine transformation matrix based on the kabsch algorithm
-
-    Args:
-        a (array): matrix a, containing points (row wise)
-        b (array): matrix b, containing points (row wise)
-    """
-    #add homogenous coordinates
-    ones = np.ones((a.shape[0], 1))
-    # a = np.append(a, ones, axis = 1)
-    # b = np.append(b, ones, axis = 1)
-
-    #calculate centroid of the data   
-    centroid_a = np.mean(a, axis = 0)
-    centroid_b = np.mean(b, axis = 0) 
-
-    centered_a = a - centroid_a
-    centered_b = b - centroid_b
-
-    h = np.matmul(centered_a.T, centered_b)
-    
-    u, s, v = np.linalg.svd(h)
-    d = np.sign(np.linalg.det(np.matmul(v.T, u.T)))
-    diag_matrix = np.diag(np.array([1,1,d]))
-    
-    #get rotation matrix
-    transformation_matrix = np.matmul(v.T, np.matmul(diag_matrix, u.T))
-    
-    #get translation part
-    translation = centroid_b - np.matmul(transformation_matrix, centroid_a)
-    
-    # transformation_matrix[:3, 3] = translation[:3].T
-    output = np.zeros((4,4))
-    output[:3,:3] = transformation_matrix
-    output[:3, 3] = translation.T
-    output[3,3] = 1
-    
-    # q = (output @ np.append(a, ones, axis = 1).T).T
-    # mean_distance = np.mean(np.linalg.norm(b - q[:, :3], axis = 1))
-    # print(f'Distance: \n {np.linalg.norm(b - q[:, :3], axis = 1)}')
-    # points = np.vstack((b,q[:,:3],a))
-    
-    # colors = np.zeros((9,3))
-    # # colors[3:6,:] = np.repeat(np.array([[1, 0, 0]],),3, axis = 0)
-    # colors[0,:] = 0, 1, 0
-    # colors[1,:] = 1, 0, 0
-    # colors[2,:] = 0, 0, 1
-    
-    # colors[3,:] = 0,0.6,0
-    # colors[4,:] = 0.6, 0, 0
-    # colors[5,:] = 0,0,0.6
-    
-    # colors[6,:] = 0,0.3,0
-    # colors[7,:] = 0.3, 0, 0
-    # colors[8,:] = 0,0,0.3
-
-
-    # colors[6:,:] = np.repeat(np.array([[0, 0, 1]],),3, axis = 0)
-
-    # draw_pointcloud(points, colors)
-    
-    return output
-
-def energy_function_worker(inv_camera_matrix, work_data):
-    predicted_positions, pixel, camera_hypothesis, hypotheses_index, image_index = work_data
-    
-    tmp_pixel = np.zeros_like(pixel, dtype=np.float64)
-    tmp_pixel[:2] = pixel[:2] 
-    tmp_pixel[2] = 1
-    # tmp_pixel[:3] = tmp_pixel[:3] / 1000.0
-    t = inv_camera_matrix @ tmp_pixel
-    t= t * pixel[2] / 1000
-    t = np.append(t,1)
-    
-    top_hat_error_width = 2
-    min_distance = np.min(np.linalg.norm(predicted_positions[:,:3] - ((camera_hypothesis @ t))[:3]))
-    
-    return (hypotheses_index, np.array([image_index, pixel[0], pixel[1]]), int(~(min_distance < 0.1)))
-
-def draw_pointcloud(np_pointcloud, np_colors):
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(np_pointcloud)
-    pcd.colors = open3d.utility.Vector3dVector(np_colors)
-    open3d.visualization.draw_geometries([pcd],
-                                    zoom=0.5,
-                                    front=[0.5, -0.2, -1],
-                                    lookat=[0, 0, 0],
-                                    up=[0, -1, 0.2])
+        # transformation_matrix[:3, 3] = translation[:3].T
+        output = np.zeros((4,4))
+        output[:3,:3] = transformation_matrix
+        output[:3, 3] = translation.T
+        output[3,3] = 1
+                
+        return output
