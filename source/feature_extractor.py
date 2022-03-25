@@ -94,7 +94,6 @@ def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_
     elif feature_type is FeatureType.DA_RGB_DEPTH:
         raise NotImplementedError()
 
-@njit
 def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index: int, num_samples: int) -> np.array:
     """
     Draw random coordinates from the image and calculate corresponding
@@ -117,23 +116,38 @@ def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index
         Corresponding world coordinates (x,y,z)
     """
     valid_samples = 0
+
     p_s_all = np.zeros((num_samples, 3), dtype=np.int16)
     w_s_all = np.zeros((num_samples, 3), dtype=np.float64)
 
+    m, n = image_data[1].shape[1:]
+    
+    x = np.linspace(0, m - 1, m)
+    y = np.linspace(0, n - 1, n)
+    
+    #switch x,y for method call since image is transposed
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+    xx = xx.flatten().astype(np.int32)
+    yy = yy.flatten().astype(np.int32)
+    
     while valid_samples < num_samples:
         # sample (x,y) pixel coordinates randomly according to image resolution
         samples_to_draw = num_samples - valid_samples
-        m, n = image_data[1].shape[1:]
-        coordinate_range = np.arange(n * m, dtype=np.int32)
-        x_y_s = np.random.choice(coordinate_range, samples_to_draw, replace=True)
-        x_s = x_y_s // n
-        y_s = x_y_s % n
-
+        random_positions = np.random.choice(xx.shape[0], size= samples_to_draw, replace=False)
+        x_s = xx[random_positions]
+        y_s = yy[random_positions]
+        
         idx_s = np.full(samples_to_draw, index, dtype=np.int16)
         p_s = np.stack((idx_s, x_s, y_s)).T
         depths = array_for_indices_3d(image_data[1], p_s)
         valid_depths_mask = get_valid_depth_mask(depths)
-
+        
+        #update the xx and yy array
+        mask = np.ones(xx.shape[0], dtype=bool)
+        mask[random_positions] = False
+        xx = xx[mask]
+        yy = yy[mask]      
+        
         # transform image coordinates to homogeneous coordinates
         hom_camera_coordinates = (x_s, y_s, np.full(samples_to_draw, 1, dtype=np.int16))
         p_hom_d_s = np.stack(hom_camera_coordinates).T.astype(np.float64)
@@ -157,7 +171,7 @@ def generate_data_samples(image_data: Tuple[np.array, np.array, np.array], index
         p_s_all[valid_samples:valid_samples+num_valid_samples] = p_s[valid_depths_mask]
         w_s_all[valid_samples:valid_samples+num_valid_samples] = w_s[valid_depths_mask]
         valid_samples += num_valid_samples
-
+        
     return p_s_all, w_s_all
 
 @njit
