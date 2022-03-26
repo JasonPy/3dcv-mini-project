@@ -1,17 +1,20 @@
 from distutils.log import error
 from operator import inv
+from pickletools import optimize
 from random import randint, random
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 import utils
+from numba import njit
 
 from typing import Tuple
 
 
 INVALID_DEPTH_VALUE = 65535
-
+def test(index):
+    print(index)
 class Ransac:
     
     def __init__(self, image_data: Tuple[np.array, np.array, np.array], forest, indices: np.array, number_pixles = 10, batch_size = 500, k = 1024, top_hat_width = 0.1):
@@ -36,14 +39,19 @@ class Ransac:
         self.top_hat_width = top_hat_width
     
     
+    def find_poses_parallel(self):
+        pose = self.optimize(0)
+
+        return (pose, self.indices[0])
+
     def find_poses(self):
         result = np.zeros(( self.indices.shape[0], 4, 4))
         for index in self.indices:
-            pose, e = self.optimize(index)
-            result[index,:,:] = pose
-            
+            pose = self.optimize(0)
+            result[index,:,:] = pose            
         return result
-    
+
+
     def optimize(self, index: int):
         """_summary_
 
@@ -92,7 +100,7 @@ class Ransac:
                 pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
                 
                 pixel_modes = modes[:,pixel_index,:]
-                tmp = modes[:,pixel_index, :]
+
                 #check if more than 0 modes are not none and remove them
                 inv_c = ~np.isfinite(pixel_modes)
                 if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
@@ -101,8 +109,7 @@ class Ransac:
                 elif np.any(~np.isfinite(pixel_modes)):
                     invalid += 1
                     continue
-
-                
+                                
                 pixel_modes = np.append(pixel_modes, np.ones((pixel_modes.shape[0], 1)), axis = 1)
                 pixel_tmp = pixel
                 pixel_tmp[2] = 1
@@ -116,12 +123,21 @@ class Ransac:
                 world_coordinates = world_coordinates[:,:,np.newaxis]
                 
                 pixel_modes_tmp = np.swapaxes(pixel_modes[:,:3][np.newaxis, :,:],1, 2)
+                distances = np.sqrt(np.sum((world_coordinates - pixel_modes_tmp)**2, axis = 1))
+                mask = ~np.any(~(distances > self.top_hat_width), axis = 1)
+                min_distance_indices = np.argmin(distances, axis = 1)
+                min_distances = distances[:, min_distance_indices]
                 outlier__mask= np.min(np.sqrt(np.sum((world_coordinates - pixel_modes_tmp)**2, axis = 1)), axis = 1) > self.top_hat_width
+                test = np.all((mask == outlier__mask))                
+                
+                
                 energies[valid_hypotheses_indices] += outlier__mask
                 
-                for h_index in valid_hypotheses_indices[~outlier__mask]:
+                for counter, h_index in enumerate(valid_hypotheses_indices[~outlier__mask]):
                     pixel_inliers[h_index].append(np.array([index, pixel[0], pixel[1]]))
-                    pixel_inliers_modes[h_index].append(tmp)
+                    if np.any(~np.isfinite(pixel_modes[min_distance_indices[counter]])):
+                         a = 1
+                    pixel_inliers_modes[h_index].append(pixel_modes[min_distance_indices[counter], :3])
 
                     
             sorted_energy_indices = np.argsort(energies[valid_hypotheses_indices])       
@@ -139,7 +155,8 @@ class Ransac:
                     continue
                 
                 modes = pixel_inliers_modes[hypothesis_index]
-                modes = np.swapaxes(np.asarray(modes), 0, 1)
+                t = modes
+                modes = np.asarray(modes)
 
                 depths = self.image_data[1][index, pixels[:, 1], pixels[:, 2]]
 
@@ -148,23 +165,20 @@ class Ransac:
                 x_y_h[:,2] = np.ones((pixels.shape[0]))
                 
                 camera__scene_coord = (self.inv_camera_matrix @ x_y_h.T).T * depths[:,np.newaxis] / 1000
-                
-                #sample random mode indices
-                random_modes = self.sample_random_modes(modes)
-                
-                mask = np.isfinite(random_modes)
+                                
+                mask = np.isfinite(modes)
                 mask = ~np.any(~mask, axis = 1)
                 
-                random_modes = random_modes[mask,:]
+                modes = modes[mask,:]
                 camera__scene_coord = camera__scene_coord[mask,:]
                 
-                hypotheses[:,:,hypothesis_index] = self.get_transformation_matrix(camera__scene_coord, random_modes)           
+                hypotheses[:,:,hypothesis_index] = self.get_transformation_matrix(camera__scene_coord, modes)           
 
                 pbar.update(1)
             pbar.close()
 
             valid_hypotheses_indices = lower_half_indices
-        return hypotheses[:,:,valid_hypotheses_indices[0]], energies[valid_hypotheses_indices[0]]
+        return hypotheses[:,:,valid_hypotheses_indices[0]]
     
     def initialize_hypotheses(self, index: int, tqdm_pbar):
         """
@@ -348,9 +362,13 @@ class Ransac:
         # a = np.append(a, ones, axis = 1)
         # b = np.append(b, ones, axis = 1)
 
-        #calculate centroid of the data   
+        #calculate centroid of the data 
+        if a.shape[0] == 0 or b.shape[0] == 0:
+            a = 1
         centroid_a = np.mean(a, axis = 0)
         centroid_b = np.mean(b, axis = 0) 
+
+   
 
         centered_a = a - centroid_a
         centered_b = b - centroid_b

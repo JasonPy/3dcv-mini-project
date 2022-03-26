@@ -7,7 +7,7 @@ from numba import njit, jit, prange
 from numpy.random import choice, uniform
 from tqdm import tqdm
 
-from feature_extractor import FeatureType, get_features_for_samples, get_features_for_two_samples
+from feature_extractor import FeatureType, get_features_for_samples
 from processing_pool import ProcessingPool
 from utils import get_mode, vector_3d_array_variance, split_set, millis
 from data_loader import DataLoader
@@ -19,7 +19,7 @@ def param_sampler(num_samples: int) -> np.array:
     for each node.
     """
     rgb_coords = np.array([0, 1, 2])
-    tau = uniform(-10, 10, num_samples)
+    tau = uniform(-100, 100, num_samples)
     delta1x = uniform(-130, 130, num_samples)
     delta1y = uniform(-130, 130, num_samples)
     delta2x = uniform(-130, 130, num_samples)
@@ -121,7 +121,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
     len_data = len(p_s)
     is_leaf_node = False
     progress = 0
-    _ms_start = millis()
+    # _ms_start = millis()
 
     # Check if this node should not be trained, make it leaf node
     if len_data == 1 or depth == tree.max_depth:
@@ -141,7 +141,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
             objective_function = tree.objective_function,
             feature_type = tree.feature_type)
 
-        _delta_get_features = millis() - _ms_start
+        # _delta_get_features = millis() - _ms_start
         
         # Find best parameter and calculate split (again, I know)
         max_score_index = np.argmin(scores)
@@ -160,7 +160,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
         len_right = np.sum(~mask_split)
 
         # Report training progress
-        _delta_split = millis() - _delta_get_features - _ms_start
+        # _delta_split = millis() - _delta_get_features - _ms_start
         progress += len_data
 
         if len_invalid == len_data:
@@ -172,14 +172,11 @@ def regression_tree_worker(image_data, work_data, worker_params):
             # All samples are split to one side -> this should be a leaf node
             splitr_len = 0
             splitl_len = 0
-            if len_left == 2 or len_right == 2:
-                while splitr_len == 0 or splitl_len == 0:
-                    param_samples = param_sampler(tree.num_param_samples)
-                    
-                    mask_valid, mask_split, tau = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
-                    # param_samples[0] = tau
-                    
-                    scores = calculate_scores_for_params(
+
+            while splitr_len == 0 or splitl_len == 0:
+
+                param_samples = param_sampler(tree.num_param_samples)
+                scores = calculate_scores_for_params(
                     image_data = image_data,
                     p_s = p_s,
                     w_s = w_s,
@@ -187,66 +184,32 @@ def regression_tree_worker(image_data, work_data, worker_params):
                     objective_function = tree.objective_function,
                     feature_type = tree.feature_type)
 
-                    _delta_get_features = millis() - _ms_start
-                    
-                    # Find best parameter and calculate split (again, I know)
-                    max_score_index = np.argmin(scores)
-                    best_params = param_samples[max_score_index]
-                    mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
-                        
-                    splitl_len = np.sum(mask_split)
-                    splitr_len = np.sum(~mask_split)
-                    
-                    w_s_valid = w_s[mask_valid]
-                    w_s_left, w_s_right = split_set(w_s_valid, mask_split)   
+                # _delta_get_features = millis() - _ms_start
+                
+                # Find best parameter and calculate split (again, I know)
+                max_score_index = np.argmin(scores)
+                best_params = param_samples[max_score_index]
+                mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
 
-                    p_s_valid = p_s[mask_valid]
-                    p_s_left, p_s_right = split_set(p_s_valid, mask_split)
-                    
+                splitl_len = np.sum(mask_split)
+                splitr_len = np.sum(~mask_split)
+
+                # Split the input data        
+                w_s_valid = w_s[mask_valid]
+                w_s_left, w_s_right = split_set(w_s_valid, mask_split)
+                p_s_valid = p_s[mask_valid]
+                p_s_left, p_s_right = split_set(p_s_valid, mask_split)
+                if splitr_len != 0 and splitl_len != 0:
+                    len_invalid = np.sum(~mask_valid)
+                    progress += len_invalid * tree_levels_below
+
                     result = TreeWorkerResult(
                         node_id = node_id,
                         is_leaf = False,
                         params = best_params,
                         set_left = (p_s_left, w_s_left),
                         set_right = (p_s_right, w_s_right),
-                        lengths = (len_data, len_invalid, len_left, len_right))
-            else:
-                while splitr_len == 0 or splitl_len == 0:
-    
-                    param_samples = param_sampler(tree.num_param_samples)
-                    scores = calculate_scores_for_params(
-                        image_data = image_data,
-                        p_s = p_s,
-                        w_s = w_s,
-                        param_samples = param_samples,
-                        objective_function = tree.objective_function,
-                        feature_type = tree.feature_type)
-
-                    _delta_get_features = millis() - _ms_start
-                    
-                    # Find best parameter and calculate split (again, I know)
-                    max_score_index = np.argmin(scores)
-                    best_params = param_samples[max_score_index]
-                    mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
-
-                    splitl_len = np.sum(mask_split)
-                    splitr_len = np.sum(~mask_split)
-
-                    # Split the input data        
-                    w_s_valid = w_s[mask_valid]
-                    w_s_left, w_s_right = split_set(w_s_valid, mask_split)
-                    p_s_valid = p_s[mask_valid]
-                    p_s_left, p_s_right = split_set(p_s_valid, mask_split)
-                    if splitr_len != 0 and splitl_len != 0:
-                        result = TreeWorkerResult(
-                            node_id = node_id,
-                            is_leaf = False,
-                            params = best_params,
-                            set_left = (p_s_left, w_s_left),
-                            set_right = (p_s_right, w_s_right),
-                            lengths = (len_data, len_invalid, len_left, len_right))
-
-                
+                        lengths = (len_data, len_invalid, len_left, len_right))                
 
         else:
             # Report training progress on invalid nodes, trigger next node training
@@ -257,8 +220,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
                 params = best_params,
                 set_left = (p_s_left, w_s_left),
                 set_right = (p_s_right, w_s_right),
-                lengths = (len_data, len_invalid, len_left, len_right),
-                timings = (_delta_get_features, _delta_split))
+                lengths = (len_data, len_invalid, len_left, len_right))
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
@@ -417,8 +379,7 @@ class RegressionTree:
         """
         images_data = data_loader.load_dataset(scene_name = scene_name, image_indices = train_indices)
         data_samples = data_loader.sample_from_data_set(images_data = images_data, num_samples = num_samples_per_images)
-        np.save(f"p_s", data_samples[0],allow_pickle=True, fix_imports=True)
-        np.save(f"w_s", data_samples[1],allow_pickle=True, fix_imports=True)
+
         tqdm.write(f'Training forest with {len(data_samples[0]):.2E} samples') # images * samples_per_img
         self.total_iterations = len(data_samples[0]) * (self.max_depth + 1)
         self.progress = 0
@@ -525,6 +486,7 @@ class RegressionForest:
             with tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True) as trees:
                 for tree in trees:
                     train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
+                    np.save(f"train_indices", train_indices,allow_pickle=True, fix_imports=True)                    
                     tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
 
                 self.is_trained = True
