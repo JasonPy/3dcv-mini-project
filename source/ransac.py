@@ -20,6 +20,7 @@ class Ransac:
     def __init__(self, image_data: Tuple[np.array, np.array, np.array], forest, indices: np.array, number_pixles = 10, batch_size = 500, k = 1024, top_hat_width = 0.1):
         """_summary_
 
+<<<<<<< HEAD
         Args:
             image_data (Tuple[np.array, np.array, np.array]): The image data to evaluate
             forest : forest for evaluation
@@ -28,11 +29,29 @@ class Ransac:
             batch_size (int, optional): Number of Pixels for hypotheses evaluation. Defaults to 500.
             k (int, optional): Number of hypotheses. Defaults to 1024.
             top_hat_width (float, optional): Allowed Error. Defaults to 0.1.
+=======
+        Parameters
+        ----------
+        image_data (Tuple[np.array, np.array, np.array]): 
+            The image data to evaluate
+        forest : 
+            forest for evaluation
+        indices (np.array): 
+            the indices in image_data to evaluate
+        number_pixles (int, optional):  
+            Defaults to 10.
+        batch_size (int, optional): 
+            Number of Pixels for hypotheses evaluation. Defaults to 500.
+        k (int, optional): 
+            Number of hypotheses. Defaults to 1024.
+        top_hat_width (float, optional): 
+            Allowed Error. Defaults to 0.1.
+>>>>>>> 21acafbef1498f4fc407524bc771ef7e0300812f
         """
         self.image_data = image_data
         self.forest = forest
         self.indices = indices
-        self.inv_camera_matrix = np.linalg.inv(utils.get_intrinsic_camera_matrix())
+        self.inv_camera_matrix = np.linalg.inv(get_intrinsic_camera_matrix())
         self.number_pixels = number_pixles
         self.batch_size = batch_size
         self.k = k
@@ -79,9 +98,6 @@ class Ransac:
             pixel_inliers_modes[element] = []
 
         energies = np.zeros(len(valid_hypotheses_indices))
-        total_points = 0
-
-        forest_time = 0
         while len(valid_hypotheses_indices) > 1:
             #sample random set B of image coordinates
             pixel_batch = self.sample_pixel_batch(index).astype(np.int32)
@@ -93,14 +109,12 @@ class Ransac:
             modes = np.asarray(modes)
             
             invalid = 0
-            t2 = time.time()
 
             for pixel_index in range(pixel_batch.shape[0]):                    
                 depth = self.image_data[1][index, pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2]]
                 pixel = np.array([pixel_batch[pixel_index, 1], pixel_batch[pixel_index, 2], depth]).T
                 
                 pixel_modes = modes[:,pixel_index,:]
-
                 #check if more than 0 modes are not none and remove them
                 inv_c = ~np.isfinite(pixel_modes)
                 if np.sum(~np.isfinite(pixel_modes)[:,0], axis = 0) < pixel_modes.shape[0]:
@@ -155,7 +169,6 @@ class Ransac:
                     continue
                 
                 modes = pixel_inliers_modes[hypothesis_index]
-                t = modes
                 modes = np.asarray(modes)
 
                 depths = self.image_data[1][index, pixels[:, 1], pixels[:, 2]]
@@ -183,12 +196,18 @@ class Ransac:
     def initialize_hypotheses(self, index: int, tqdm_pbar):
         """
         Intialize k hypotheses based on pixel camera coordinates and their forest predictions 
-        Args:
-            index (int): image index
-            tqdm_pbar (_type_): _description_
+        
+        Parameters
+        ----------
+        index (int): 
+            image index
+        tqdm_pbar (_type_): 
+            _description_
 
-        Returns:
-            np.array(4,4,k): Hypotheses stored along axis = 2
+        Returns
+        ----------
+        np.array(4,4,k): 
+            Hypotheses stored along axis = 2
         """
         shape = self.image_data[0][index].shape
             
@@ -235,7 +254,8 @@ class Ransac:
         """
         Generate n random pixels and evaluate each pixel with the given forest.    
 
-        Args:
+        Parameters
+        ----------
             n (int): The number of random pixels
             index (int): image index
             shape (_type_): _description_
@@ -243,7 +263,8 @@ class Ransac:
             valid_xs (np.array): valid x values stored, as flatten array
             valid_ys (np.array): valid y values stored, as flatten array
 
-        Returns:
+        Returns
+        ----------
             _type_: _description_
         """
         
@@ -303,12 +324,16 @@ class Ransac:
     def select_n_random_modes(self, modes, n = 3):
         """ Evalutes the modes. Checks if the modes are valid at least for n pixels. 
 
-        Args:
-            modes : predicted modes
+        Parameters
+        ----------
+        modes : predicted modes
 
-        Returns:
-            output : the valid modes as array (valid_pixels, 3)
-            mask : boolean mask indicates which pixels have a valid mode
+        Returns
+        ----------
+        output : 
+            the valid modes as array (valid_pixels, 3)
+        mask : 
+            boolean mask indicates which pixels have a valid mode
         """
         modes = np.asarray(modes)
         
@@ -357,18 +382,10 @@ class Ransac:
             a (array): matrix a, containing points (row wise)
             b (array): matrix b, containing points (row wise)
         """
-        #add homogenous coordinates
-        ones = np.ones((a.shape[0], 1))
-        # a = np.append(a, ones, axis = 1)
-        # b = np.append(b, ones, axis = 1)
 
         #calculate centroid of the data 
-        if a.shape[0] == 0 or b.shape[0] == 0:
-            a = 1
         centroid_a = np.mean(a, axis = 0)
-        centroid_b = np.mean(b, axis = 0) 
-
-   
+        centroid_b = np.mean(b, axis = 0)   
 
         centered_a = a - centroid_a
         centered_b = b - centroid_b

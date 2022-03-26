@@ -1,12 +1,12 @@
+import numpy as np
+
 from time import sleep
 from typing import Callable, Tuple
 from tqdm import tqdm
-import numpy as np
 from multiprocessing import Process, cpu_count, shared_memory, JoinableQueue
-print = tqdm.write
-
-from feature_extractor import generate_data_samples
 from utils import get_arrays_size_MB
+
+print = tqdm.write
 
 def init_shared_array(array: np.ndarray):
     shm = shared_memory.SharedMemory(create=True, size=array.nbytes)

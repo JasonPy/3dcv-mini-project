@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import time
+import os
 
 from numba import njit, objmode
 from typing import Tuple
@@ -116,3 +117,28 @@ def save_object(obj, filename):
     """
     with open(filename, 'wb') as outp: 
         pickle.dump(obj, outp, pickle.HIGHEST_PROTOCOL)
+
+def save_forest(forest, params, output_path):
+    """
+    Save trained forest with corresponding parameters.
+
+    Parameters
+    ----------
+    forest: RegressionForest
+        The forest to be saved
+    train_indices: np.array
+        Indices used to determine training samples
+    test_indices: np.array
+        Indices used to determine test samples
+    timestamp: datetime
+        Time at which training started
+    test_size: int
+        Size of the test data in percent
+    output_path:string
+        The target directory to save data
+    """
+    
+    target_dir = os.path.join(output_path, f"{params['TIMESTAMP']}_{params['SCENE']}", '')
+    os.makedirs(target_dir)
+    save_object(forest, os.path.join(target_dir, f'trained_forest_{forest.scene_name}.pkl'))
+    save_object(params, os.path.join(target_dir, f'params_{forest.scene_name}.pkl'))
