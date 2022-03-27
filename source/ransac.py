@@ -20,16 +20,6 @@ class Ransac:
     def __init__(self, image_data: Tuple[np.array, np.array, np.array], forest, indices: np.array, number_pixles = 10, batch_size = 500, k = 1024, top_hat_width = 0.1):
         """_summary_
 
-<<<<<<< HEAD
-        Args:
-            image_data (Tuple[np.array, np.array, np.array]): The image data to evaluate
-            forest : forest for evaluation
-            indices (np.array): the indices in image_data to evaluate
-            number_pixles (int, optional):  Defaults to 10.
-            batch_size (int, optional): Number of Pixels for hypotheses evaluation. Defaults to 500.
-            k (int, optional): Number of hypotheses. Defaults to 1024.
-            top_hat_width (float, optional): Allowed Error. Defaults to 0.1.
-=======
         Parameters
         ----------
         image_data (Tuple[np.array, np.array, np.array]): 
@@ -46,12 +36,11 @@ class Ransac:
             Number of hypotheses. Defaults to 1024.
         top_hat_width (float, optional): 
             Allowed Error. Defaults to 0.1.
->>>>>>> 21acafbef1498f4fc407524bc771ef7e0300812f
         """
         self.image_data = image_data
         self.forest = forest
         self.indices = indices
-        self.inv_camera_matrix = np.linalg.inv(get_intrinsic_camera_matrix())
+        self.inv_camera_matrix = np.linalg.inv(utils.get_intrinsic_camera_matrix())
         self.number_pixels = number_pixles
         self.batch_size = batch_size
         self.k = k
