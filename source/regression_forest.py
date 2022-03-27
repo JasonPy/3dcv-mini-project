@@ -196,15 +196,18 @@ def regression_tree_worker(image_data, work_data, worker_params):
 
                 p_s_valid = p_s[mask_valid]
                 p_s_left, p_s_right = split_set(p_s_valid, mask_split)
+                
+            len_invalid = np.sum(~mask_valid)
+            progress += len_invalid * tree_levels_below
 
-                result = TreeWorkerResult(
-                    node_id=node_id,
-                    is_leaf=False,
-                    params=best_params,
-                    set_left=(p_s_left, w_s_left),
-                    set_right=(p_s_right, w_s_right),
-                    lengths=(len_data, len_invalid, len_left, len_right))
-        
+            result = TreeWorkerResult(
+                node_id=node_id,
+                is_leaf=False,
+                params=best_params,
+                set_left=(p_s_left, w_s_left),
+                set_right=(p_s_right, w_s_right),
+                lengths=(len_data, len_invalid, len_left, len_right))
+            
         else:
             # Report training progress on invalid nodes, trigger next node training
             progress += len_invalid * tree_levels_below # invalid are considered "done" for all levels below
