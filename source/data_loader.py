@@ -7,7 +7,7 @@ from PIL import Image
 
 from feature_extractor import generate_data_samples
 
-SCENES = ["chess", "fire", "heads", "office", "pumpkin", "redkitchen", "stairs"]
+SCENES = ["chess"]
 
 class DataLoader:
     def __init__(self, data_path: str):
@@ -62,13 +62,14 @@ class DataLoader:
         files_to_load = []
         file_paths_for_scene = self.metadata[scene_name]
         for image_index in image_indices:
+            print(image_index)
             for i in range(3):
                 files_to_load.append(file_paths_for_scene[image_index * 3 + i])
-
+        print(files_to_load)
         data_rgb = []
         data_d = []
         data_pose = []
-
+        print(files_to_load[0])
         for file_path in tqdm(files_to_load, ascii = True, desc = f'Loading image data', dynamic_ncols = True, leave = False):
             if file_path.endswith(".color.png"):  
                 image = np.array(Image.open(file_path))

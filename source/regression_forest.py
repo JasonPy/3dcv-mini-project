@@ -37,7 +37,6 @@ def objective_reduction_in_variance (
     """
     Tree training objective function. Evaluates the fitness of the split according to the
     reduction in variance criterium (see 2.4 forest training)
-
     Parameters
     ----------
     set_complete: DataHolder
@@ -66,7 +65,6 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
     """
     Calculate the scores according to the best split with respect to
     the parameter samples. 
-
     PARAMETERS
     ----------
     image_data: np.array
@@ -82,7 +80,12 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
         mask_valid, mask_split = get_features_for_samples(image_data, p_s, param_samples[i], feature_type)
         w_s_valid = w_s[mask_valid]
         set_left, set_right = split_set(w_s_valid, mask_split)
-        scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
+        
+        #check if split is invalid if so set energy to inf
+        if set_left.shape[0] == 0 or set_right.shape[0] == 0:
+            scores[i] = np.inf
+        else:
+            scores[i] = objective_function(w_complete = w_s, w_left = set_left, w_right = set_right)
     return scores
 
 class TreeWorkerResult:
@@ -116,7 +119,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
     len_data = len(p_s)
     is_leaf_node = False
     progress = 0
-    _ms_start = millis()
+    # _ms_start = millis()
 
     # Check if this node should not be trained, make it leaf node
     if len_data == 1 or depth == tree.max_depth:
@@ -136,7 +139,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
             objective_function = tree.objective_function,
             feature_type = tree.feature_type)
 
-        _delta_get_features = millis() - _ms_start
+        # _delta_get_features = millis() - _ms_start
         
         # Find best parameter and calculate split (again, I know)
         max_score_index = np.argmin(scores)
@@ -155,7 +158,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
         len_right = np.sum(~mask_split)
 
         # Report training progress
-        _delta_split = millis() - _delta_get_features - _ms_start
+        # _delta_split = millis() - _delta_get_features - _ms_start
         progress += len_data
 
         if len_invalid == len_data:
@@ -217,8 +220,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
                 params = best_params,
                 set_left = (p_s_left, w_s_left),
                 set_right = (p_s_right, w_s_right),
-                lengths = (len_data, len_invalid, len_left, len_right),
-                timings = (_delta_get_features, _delta_split))
+                lengths = (len_data, len_invalid, len_left, len_right))
 
     if is_leaf_node:
         # Report training progress ("skipped" calculations since this is a leaf node)
@@ -231,7 +233,6 @@ class Node:
     def __init__(self, node_id: str, depth: int = 0):
         """
         Create a new node with a given feature_function and initial parameters
-
         Parameters
         ----------
         feature_type: FeatureType
@@ -257,7 +258,6 @@ class Node:
         tree: 'RegressionTree'):
         """
         Evaluate the tree recursively starting at this node.
-
         Parameters
         ----------
         samples: DataHolder
@@ -267,7 +267,6 @@ class Node:
         -------
         any
             The response at the leaf node. Evaluated recursively
-
         """
         if (len(samples) == 0):
             return samples
@@ -472,7 +471,6 @@ class RegressionForest:
         Train this forest with the list of data samples given. The complete list of samples
         will be split among the self.num_trees trees and each tree trained on a subset of the
         samples.
-
         Parameters
         ----------
         data: DataHolder
@@ -488,6 +486,7 @@ class RegressionForest:
             with tqdm(self.trees, ascii = True, desc = f'Training forest', dynamic_ncols = True) as trees:
                 for tree in trees:
                     train_indices = np.random.choice(train_image_indices, size = num_images_per_tree, replace = False)
+                    np.save(f"train_indices", train_indices,allow_pickle=True, fix_imports=True)                    
                     tree.train(loader, scene_name, train_indices, num_samples_per_image, num_workers)
 
                 self.is_trained = True
