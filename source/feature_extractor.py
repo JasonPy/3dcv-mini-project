@@ -14,7 +14,6 @@ class FeatureType(Enum):
     DEPTH = 1
     DA_RGB = 2
     DA_RGB_DEPTH = 3
-
 @njit
 def get_features_for_samples(image_data: Tuple[np.array, np.array, np.array], p_s: np.array, param_sample: any, feature_type: FeatureType):
     """

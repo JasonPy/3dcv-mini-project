@@ -37,7 +37,6 @@ def objective_reduction_in_variance (
     """
     Tree training objective function. Evaluates the fitness of the split according to the
     reduction in variance criterium (see 2.4 forest training)
-
     Parameters
     ----------
     set_complete: DataHolder
@@ -66,7 +65,6 @@ def calculate_scores_for_params(image_data, p_s, w_s, param_samples, objective_f
     """
     Calculate the scores according to the best split with respect to
     the parameter samples. 
-
     PARAMETERS
     ----------
     image_data: np.array
@@ -231,7 +229,6 @@ class Node:
     def __init__(self, node_id: str, depth: int = 0):
         """
         Create a new node with a given feature_function and initial parameters
-
         Parameters
         ----------
         feature_type: FeatureType
@@ -257,7 +254,6 @@ class Node:
         tree: 'RegressionTree'):
         """
         Evaluate the tree recursively starting at this node.
-
         Parameters
         ----------
         samples: DataHolder
@@ -267,7 +263,6 @@ class Node:
         -------
         any
             The response at the leaf node. Evaluated recursively
-
         """
         if (len(samples) == 0):
             return samples
@@ -472,7 +467,6 @@ class RegressionForest:
         Train this forest with the list of data samples given. The complete list of samples
         will be split among the self.num_trees trees and each tree trained on a subset of the
         samples.
-
         Parameters
         ----------
         data: DataHolder
@@ -495,3 +489,4 @@ class RegressionForest:
                 self.scene_name = scene_name
         except KeyboardInterrupt:
             pass            
+
