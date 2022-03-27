@@ -160,7 +160,7 @@ def regression_tree_worker(image_data, work_data, worker_params):
             # All samples are invalid. Edge case; not observed so far
             print(f'Error in node {node_id}: All samples considered invalid')
             result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = w_s[0])
-
+            progress += len_invalid * tree_levels_below
         elif len_right == 0 or len_left == 0:
             # All samples are split to one side -> this should be a leaf node
             splitr_len = 0
