@@ -48,7 +48,7 @@ Marven Hinze\\
 \and
 Nadine Theisen\\
 \tt 3475402\\
-{\tt\small nadine.theissen@stud.uni-heidelberg.de}
+{\tt\small nadine.theisen@stud.uni-heidelberg.de}
 }
 
 \maketitle
@@ -56,6 +56,8 @@ Nadine Theisen\\
 
 %%%%%%%%% ABSTRACT
 \begin{abstract}
+This project aims to realize the approach of \cite{shotton2013} to infer the position and rotation in 3D space of a RGD-D camera given single 2D images. A regression forest is used to predict the 3D position of any single pixel in the world's space given the RGB and depth features of the images in the training set. Given the 3D locations of a set of pixels, an initial set of hypothesized camera poses are deduced by applying the regression forest and are then optimized with a preemptive RANSAC. The algorithm is evaluated on the 7-scenes dataset~\cite{glocker2013} which contains images with RGB and depth features for 7 different 3D scenes. We find that the regression forest predicts $91.2\%$ valid 3D world coordinates on average for the 2D pixels but also comes with rather large deviations for some of the 3D scenes. %ergebnis für camera poses
+
    
 \end{abstract}
 
@@ -70,7 +72,7 @@ In this project, we provide an approach of interferring the pose of a camera in 
 In the first step, we apply a \textit{Regression Forest} to a perform scene coordinate regression. A regression tree can be evaluated at any 2D image pixel \textbf{p} and predicts the corresponding position in the 3D world space of the scene as a combination of the predictions of all decision trees in the forest. We use the scene coordinates introduced by \cite{shotton2013} as labels for training the regression forest. Using the calibrated depth \textit{D}(\textbf{p}), it is possible to compute the 3D camera space coordinate \textbf{x} which can be transformed into the scene's world coordinate frame with the camera pose matrices \textit{H} giving  the scene world coordinates \textbf{m}. The forest is then trained on randomly chosen sets (\textbf{p,m}) for each tree.
 
 \item Optimizing the camera pose for a given image \\
-In this part, the scene coordinates associated with a 2D pixel will be used to estimate the camera location and orientation. The location is estimated by minimizing an energy function over a camera pose hypothesis \textit{H} where the number of pixels which are outliers according to the included error function is counted. The energy is optimized using a RANSAC algorithm. In the first step, the energy of a set of initial hypotheses is updated after evaluating the forest at a random sample of pixels.
+In this part, the scene coordinates associated with a 2D pixel will be used to estimate the camera location and orientation. The location is estimated by minimizing an energy function over a camera pose hypothesis \textit{H} determined by applying the regression forest on a small set of pixels. Then, the number of pixels which are outliers according to the included error function is counted. The energy is optimized using a RANSAC algorithm. In the first step, the energy of a set of initial hypotheses is updated after evaluating the forest at a random sample of pixels.
 \end{enumerate}
     
     
@@ -82,7 +84,7 @@ In this part, the scene coordinates associated with a 2D pixel will be used to e
 
 % What data is given
 % 	-> Image data including depth, camera poses
-We use the 7-scenes data set which consists of seven different scenes with each between 2,000 and 12,000 frames. To each frame the corresponding depth map and the 4×4 matrix \textit{H} in homogeneous coordinates which encodes the rotation and the translation from camera space to world space. The full data set was obtained using a Kinect RGB-D camera at 640×480 resolution. The dataset is split into training and test data.
+We use the 7-scenes dataset~\cite{glocker2013} set which consists of seven different scenes with each between 2,000 and 12,000 frames. To each frame the corresponding depth map and the 4×4 matrix \textit{H} in homogeneous coordinates which encodes the rotation and the translation from camera space to world space. The full data set was obtained using a Kinect RGB-D camera at 640×480 resolution. The dataset is split into training and test data.
 
 %-------------------------------------------------------------------------
 \subsection{Related Work}
