@@ -12,7 +12,8 @@
 \usepackage{amssymb}
 
 % Include other packages here, before hyperref.
-
+\usepackage{algpseudocode}
+\usepackage{algorithm}
 % If you comment hyperref and then uncomment it, you should delete
 % egpaper.aux before re-running latex.  (Or just hit 'q' on the first latex
 % run, let it finish, and you should be clear).
@@ -208,8 +209,101 @@ $f_{\theta}(\boldsymbol{p}) \leq \tau$.
 
 %-------------------------------------------------------------------------
 \subsection{RANSAC Optimization}
+The modes (predictions) of the forest are used to calculate the corresponding camera position matrix for a given image. The objective of the RANSAC optimization is to find a camera pose matrix that minimizes an energy $E$,
 
-%-------------------------------------------------------------------------
+\begin{equation}
+	E(H) = \sum_{i \in I} \rho(\min_{\boldsymbol{m} \in \boldsymbol{M_{i}}} 
+	\| \boldsymbol{m} - H \boldsymbol{x_{i}} \|_{2}) = \sum_{i \in I}e_{i}(H)
+\end{equation}
+
+where as $i \in I$ is a pixel index,  $\rho$ an error function, $M_{i}$ 
+the set of modes for pixel $\boldsymbol{p_{i}}$, $H$ is the camera pose hypothesis and $\boldsymbol{x_{i}}$ is the camera
+scene coordinate of $\boldsymbol{p_{i}}$ \cite{shotton2013}. The error function $\rho$ is a top-hat error 
+function with a width of $0.1$m \cite{shotton2013}. If $\rho$ returns $0$ for a given pixel, the pixel is considered as inlier, otherwise it is considered as outlier.
+
+The hypotheses optimization is based on an adapted version of preemptive RANSAC \cite{shotton2013}. Algorithm \autoref{ransac} shows the pseudo code of the RANSAC optimization.
+The optimization procedure starts with the initialization of $K$ hypotheses for the camera pose matrix. The next step is to create a pixel batch $B$,
+each hypothesis is evaluated on this batch. For each hypothesis the resulting inliers are stored and their energy is updated. Furthermore, to reduce the runtime, the mode $\boldsymbol{m}$ for which $\rho$ evaluated to zero is stored for
+the pixel inlier.
+Then the hypotheses are sorted by their energy in ascending order and the upper half is discarded. The next step is to refine the remaining hypotheses.
+
+\begin{algorithm}
+	\caption{RANSAC optimization}\label{ransac}
+\begin{algorithmic}[1]
+	\State  $K \gets K_{init}$
+	\State initialize hypotheses $\{ H_{K} \}_{k=1}^{K}	$
+	\State initialize energies $E_{k}$
+	\While{$K > 1$}
+		\State sample random pixel batch $B$
+		\ForAll{$i \in B$}
+			\State $\boldsymbol{M_{i}} = forest(i)$
+			\ForAll{$k \in \{1, ..., K\}}$
+				\State $E_{k} \gets E_{k} + e_{i}(H_{k})$
+				\If{$e_{i}(H_{k})$ is $0$}
+					\State add i to $inliers_{k}$
+					\State add $\boldsymbol{m}$ to $modes_{k}$
+				\EndIf
+			\EndFor
+		\EndFor
+		\State sort hypotheses by $E_{K}$
+		\State $K \gets \lfloor \frac{K}{2} \rfloor$
+		\State refine hypotheses $H_{k}$ on $inliers_{k}$ for $k=1, ...,K$
+
+	\EndWhile
+	
+	\State \Return $H_{k}$
+	
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Hypotheses initialization}
+To initialize a hypothesis, three random pixels with a valid depth value are sampled and each pixel is evaluated by the forest. This results in three sets 
+\textbf{M} containing a 3D world coordinate \textbf{m} for each tree in the forest. The next step is to select for each of these 
+pixel a random prediction from the corresponding set $\boldsymbol{M}$. 
+Furthermore, for each pixel the camera scene coordinate $\boldsymbol{P}$ is calculated.
+
+\begin{equation}
+	\boldsymbol{P} = (\boldsymbol{C}^{-1} \cdot \boldsymbol{\tilde{p}} ) \cdot d
+\end{equation}
+
+where $\boldsymbol{C}$ is the intrinsic camera matrix, $\boldsymbol{\tilde{p}}$ the pixel in
+homogeneous coordinates and $d$ is the depth value for the pixel in meters. 
+
+For finding the best
+rotation between the camera scene and world coordinates, the Kabsch algorithm is used. The Kabsch algorithm can be used to find the best rotation that transforms one set of vectors into a second set of vectors \cite{Kabsch1976}.
+Let $M$ be a matrix containing the camera scene coordinates row wise and $W$ a matrix containing
+the world coordinates, where as $\boldsymbol{\bar{m}}$ and $\boldsymbol{\bar{w}}$ are the mean coordinates.
+To find the best rotation one needs to compute the cross covariance matrix $C$ of $M$ and $W$, the 
+next step is the application of a singular value decomposition on $C$ \cite{Brachmann2020}.
+
+\begin{equation}
+	C = U \Sigma V^T
+\end{equation}
+
+The optimal rotation $R$ and the translation $\boldsymbol{t}$ are then obtained by \cite{Brachmann2020}:
+
+\begin{equation}
+	\begin{split}
+		R &= V 
+		\begin{bmatrix}
+			1 & 0 & 0\\
+			0 & 1 & 0\\
+			0 & 0 & det(VU^T)
+		\end{bmatrix}
+		U^T \\
+		\boldsymbol{t} &= \boldsymbol{\bar{w}} - R \boldsymbol{\bar{m}}
+	\end{split}
+\end{equation}
+ By combining $R$ and $t$ into a affine transformation the initial hypothesis is obtained.
+ 
+\subsubsection{Pose refinement}
+For refinement of a hypothesis the respective pixel inliers are retrieved and their camera scene 
+coordinates are calculated. These camera scene coordinates and the stored modes for the pixel inliers 
+are passed to the Kabsch algorithm, the returned transformation is then considered as the refined pose.
+
+
+
+%------------------------------------------------------------------------- 
 \section{Experiment Evaluation}
 
 
@@ -280,8 +374,9 @@ Based on the predicted 2D-3D correspondencies of the forest, the camera pose is 
 	\hline
 	Hyperparameter & Value \\
 	\hline\hline
-	Number of Trees & $5$ \\
-	Max Tree Depth & $16$ \\
+	Size of batch $B$ & $500$ \\
+	$K_{init}$ & $1024$ \\
+	
 	\hline
 	\end{tabular}
 	\end{center}
