@@ -69,7 +69,8 @@ In this project, we provide an approach of interferring the pose of a camera in 
 
 In the first step, we apply a \textit{Regression Forest} to a perform scene coordinate regression. A regression tree can be evaluated at any 2D image pixel \textbf{p} and predicts the corresponding position in the 3D world space of the scene as a combination of the predictions of all decision trees in the forest. We use the scene coordinates introduced by \cite{shotton2013} as labels for training the regression forest. Using the calibrated depth \textit{D}(\textbf{p}), it is possible to compute the 3D camera space coordinate \textbf{x} which can be transformed into the scene's world coordinate frame with the camera pose matrices \textit{H} giving  the scene world coordinates \textbf{m}. The forest is then trained on randomly chosen sets (\textbf{p,m}) for each tree.
 
-\item Optimizing the camera pose for a given image 
+\item Optimizing the camera pose for a given image \\
+In this part, the scene coordinates associated with a 2D pixel will be used to estimate the camera location and orientation. The location is estimated by minimizing an energy function over a camera pose hypothesis \textit{H} where the number of pixels which are outliers according to the included error function is counted. The energy is optimized using a RANSAC algorithm. In the first step, the energy of a set of initial hypotheses is updated after evaluating the forest at a random sample of pixels.
 \end{enumerate}
     
     
