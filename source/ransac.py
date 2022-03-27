@@ -377,3 +377,6 @@ class Ransac:
         output[3,3] = 1
                 
         return output
+
+def parallel(ransac: Ransac):
+    return ransac.find_poses_parallel()
