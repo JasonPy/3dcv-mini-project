@@ -1,20 +1,11 @@
-from distutils.log import error
-from operator import inv
-from pickletools import optimize
-from random import randint, random
-import time
 import numpy as np
-from scipy.spatial.transform import Rotation as R
-from tqdm import tqdm
-import utils
-from numba import njit
 
+from tqdm import tqdm
 from typing import Tuple
 
+from utils import get_intrinsic_camera_matrix
+from feature_extractor import INVALID_DEPTH_VALUE
 
-INVALID_DEPTH_VALUE = 65535
-def test(index):
-    print(index)
 class Ransac:
     
     def __init__(self, image_data: Tuple[np.array, np.array, np.array], forest, indices: np.array, number_pixles = 10, batch_size = 500, k = 1024, top_hat_width = 0.1):
@@ -40,7 +31,7 @@ class Ransac:
         self.image_data = image_data
         self.forest = forest
         self.indices = indices
-        self.inv_camera_matrix = np.linalg.inv(utils.get_intrinsic_camera_matrix())
+        self.inv_camera_matrix = np.linalg.inv(get_intrinsic_camera_matrix())
         self.number_pixels = number_pixles
         self.batch_size = batch_size
         self.k = k
@@ -63,10 +54,11 @@ class Ransac:
     def optimize(self, index: int):
         """_summary_
 
-        Args:
+        Parameters
+        ----------
             index (int): Index of the image, for finding camera pose
-
-        Returns:
+        Returns
+        ----------
             hypothesis (np.array): Estimated hypothesis
         """
         pbar = tqdm(total = self.k, desc="Intialize hypotheses")
