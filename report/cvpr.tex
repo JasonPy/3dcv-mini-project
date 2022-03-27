@@ -10,7 +10,8 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
-
+\usepackage{subfig}
+\usepackage[printonlyused, smaller]{acronym}
 % Include other packages here, before hyperref.
 
 % If you comment hyperref and then uncomment it, you should delete
@@ -88,6 +89,19 @@ We use the 7-scenes dataset~\cite{glocker2013} set which consists of seven diffe
 
 %-------------------------------------------------------------------------
 \subsection{Related Work}
+Nowdays, many approaches to infer camera poses or poses of objects in general are based on either image-based approaches or 
+sparse keypoint matching. The application of imaged-based pose estimation uses the whole image and matches different frames 
+using high level features like \ac{SIFT} or \ac{SURF}~\cite{Klein2008}. Thereby, an initial camera pose is refined using 
+the obtained features and known camera poses. The result is then calculated as a weighted average over the 
+images that describe the camera pose best. 
+
+More recently, approaches concerning sparse feature matching gained interest~\cite{Holzer2012}. Again, high level features are detected but 
+instead matched with a large set of feature descriptors. This approach requires a lot of engineering regarding the feature
+description and matching process. The routine of inferring a camera pose presented in the reference paper of Shotton et al.~\cite{shotton2013}
+comes the difference that only low-level features are utilized. Simple pixel-based features are applied in order to train a
+regression forest without the need of feature descripters. The predictions of the camera pose are then made directly one the
+output of the forest which correlates 3D image pixels with 3D world coordinates. The underlying forest can additionally be 
+evaluated for abritrary pixel positions and is therefore sparse.
 
 
 \section{Methods}
@@ -123,7 +137,7 @@ labeling and the image-feature extraction on which the forests base their predic
 \subsubsection{Decision Trees}
 %-------------------------------------------------------------------------
 A regression forest consists of a number $N$ of regression trees, which each consist of
-of root node and it's children. We consider the special case of binary decision trees
+of root node and it's children~\cite{Criminisi2013}. We consider the special case of binary decision trees
 where each node (unless it is a leaf node) has a left and a right child. Each node $n$
 stores a set of parameters $\theta_n$ which are used in the calculation of a
 feature response function $f_{\theta}(\boldsymbol{p}) \in \{1, 0\}$ which determines if the input
@@ -250,7 +264,7 @@ are evaluated and their results are compared among them and to the reference pap
 \subsection{Implementation and Parameter Settings}
 For each scene a forest is trained with the hyperparameters given in Table~\ref{tab:params-forest}. These parameters are 
 chosen according to the values in~\cite{shotton2013}. Thereby, only the feature type 'Depth Adaptive RGB' is considered. The number of 
-parameters that are sampled per image wasn't given and we found the value $1024$ to work out well. A further increase wasn't 
+parameters that are sampled per image wasn't given and we found the value $1024$ to work out well, because further increase wasn't 
 improving the number of correct world coordinate predictions.
 \begin{table}[h!]
 	\begin{center}
@@ -309,10 +323,12 @@ and is explained in Subsection.
 To validate the  of the forest, the predicted coordinates of the forest are compared to the known ground truths using 
 the $\ell^2$-norm. Predicting the 3D world coordinates on the test data set, the forests exhibit
 $91.2\%$ valid coordinates on average. This implies that a forest is capable of finding correspondencies between 
-image and world coordinates. 
+image and world coordinates. Correspondencies that could not be predicted during feature generationare caused by the 
+fact that sample pixels are potentially shifted out of the image frame or correspond to an invalid depth value. 
 
-However, the average deviations shown in Table~\ref{tab:forest-error} indicate rather 
-large deviations from the ground truth. % aber nicht schlimm, weil ransac ja optimiert (?), earum aber so groß? vgl mit Paper
+To further investigate the forests, the deviations from the predicted world coordinates to the ground truths is shown. 
+In Table~\ref{tab:forest-error} the deviation in meters and corresponding variance indicates rather large errors.
+It varies among $x.y$m for the scene XY to $x.y$m for the scene CSAS.
 
 % table deviations
 \begin{table}[h]
@@ -336,6 +352,28 @@ large deviations from the ground truth. % aber nicht schlimm, weil ransac ja opt
 	'Depth Adaptive RGB' features and the respective ground truths for each scene using the $\ell^2$-norm.}
 \end{table}
 
+However, when looking at the pointclouds of the predicted world coordinates the scenes can be recognized. 
+
+\begin{figure*}[ht!]
+	\begin{center}
+	% \fbox{\rule{0pt}{2in} \rule{0.9\linewidth}{0pt}}
+	
+	\subfloat[~Chess]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
+	\subfloat[~Fire]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
+	\subfloat[~Heads]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
+	\subfloat[~Office]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}
+	\\
+	\subfloat[~Pumpkin]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
+	\subfloat[~Red Kitchen]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
+	\subfloat[~Stairs]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}
+	\end{center}
+	\caption{For each scene a forest is trained with the hyperparameters stated in~\ref{XX}. The forest 
+	is then evaluated for $500$ test images with each having $5,000$ sample pixels. For each pixel the coresponding
+	3D world coordinate is obtained. The resulting pointclouds are displayed in subfigures (a)-(g). }
+	\label{fig:pointclouds}
+	\label{fig:onecol}
+\end{figure*}
+	
 
 
 \subsection{Camera Pose Predictions}
@@ -343,6 +381,12 @@ tranlational, angular error
 plots
 
 \section{Conclusion}
+
+\section*{Abbreviations}
+\begin{acronym}
+	\acro{SIFT}{Scale-Invariant Feature Transform}
+	\acro{SURF}{Speeded Up Robust Features}
+\end{acronym}
 
 {\small
 \bibliographystyle{ieee_fullname}
