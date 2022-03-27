@@ -1,8 +1,5 @@
 import numpy as np
-
-from tqdm import tqdm
 from typing import Tuple
-
 from utils import get_intrinsic_camera_matrix
 from feature_extractor import INVALID_DEPTH_VALUE
 
@@ -58,14 +55,12 @@ class Ransac:
         ----------
             index (int): Index of the image, for finding camera pose
         Returns
-        ----------
+        ----------initia
             hypothesis (np.array): Estimated hypothesis
         """
-        pbar = tqdm(total = self.k, desc="Intialize hypotheses")
         
         #initialize k camera hypotheses
-        hypotheses = self.initialize_hypotheses(index, pbar)    
-        pbar.clear()
+        hypotheses = self.initialize_hypotheses(index)    
 
         #store for each pixel the modes    
         pixel_inliers = {}
@@ -142,11 +137,9 @@ class Ransac:
         
             #refine hypotheses based on inlieres and kabsch
             
-            pbar = tqdm(total = lower_half_indices.shape[0], desc = "optimize hypotheses")
             for hypothesis_index in lower_half_indices:
                 pixels = np.asarray(pixel_inliers[hypothesis_index])
                 if pixels.shape[0] == 0:
-                    pbar.update(1)                
                     continue
                 
                 modes = pixel_inliers_modes[hypothesis_index]
@@ -168,13 +161,10 @@ class Ransac:
                 
                 hypotheses[:,:,hypothesis_index] = self.get_transformation_matrix(camera__scene_coord, modes)           
 
-                pbar.update(1)
-            pbar.close()
-
             valid_hypotheses_indices = lower_half_indices
         return hypotheses[:,:,valid_hypotheses_indices[0]]
     
-    def initialize_hypotheses(self, index: int, tqdm_pbar):
+    def initialize_hypotheses(self, index: int):
         """
         Intialize k hypotheses based on pixel camera coordinates and their forest predictions 
         
@@ -200,9 +190,7 @@ class Ransac:
         
         #switch x,y for method call since image is transposed
         xx, yy = np.meshgrid(x, y, indexing="ij")
-        
-        #depths = image[:,:,3]
-        
+                
         depths = self.image_data[1][index,:,:]
         valid_depths_mask = ~((depths == INVALID_DEPTH_VALUE) | (depths == 0))
         
@@ -225,7 +213,6 @@ class Ransac:
             hypothesis = self.get_transformation_matrix(x_y_h[:,:3], forest_modes)
             
             hypotheses[:,:,step] = hypothesis
-            tqdm_pbar.update(1)
 
         return hypotheses
 

@@ -1,13 +1,12 @@
 
-
 import pickle
 import numpy as np
-
 from data_loader import DataLoader
-import utils
+from utils import save_object
 import ransac
-import time
-from multiprocessing import Pool
+import os
+from datetime import datetime
+import multiprocessing
 
 
 def get_angular_error(poses: np.array, ground_truth: np.array) -> np.array:
@@ -65,18 +64,21 @@ def get_translational_error(poses: np.array, ground_truth: np.array) -> np.array
 
 
 def parallel(ransac: ransac.Ransac):
-    return ransac.find_poses()
+    return ransac.find_poses_parallel()
 
 def load_object(filename):
     with open(filename, 'rb') as inp:
         return pickle.load(inp)
 
-NUM_TEST_IMAGES = 20
-
-SCENE = 'pumpkin'
+NUM_TEST_IMAGES = 10
+SCENE = 'fire'
 DATA_PATH = '/home/marven/Programs/Studium/CV-Project/3dcv-mini-project/data'
+PREFIX = '/home/marven/Programs/Studium/CV-Project/3dcv-mini-project/output/27-03-2022_03-41_fire/'
+OUTPUT_PATH = '../output_poses'
+TIMESTAMP = datetime.now()
 
-PREFIX = '/home/marven/Programs/Studium/CV-Project/3dcv-mini-project/output/26-03-2022_11_pumpkin/'
+
+
 loader = DataLoader(DATA_PATH)
 
 params = load_object(f'{PREFIX}params_{SCENE}.pkl')
@@ -85,30 +87,31 @@ forest = load_object(f'{PREFIX}trained_forest_{SCENE}.pkl')
 
 test_set_indices = params['TEST_INDICES']
 test_indices = np.random.choice(test_set_indices, NUM_TEST_IMAGES, replace = False)
-# images_data = loader.load_dataset(SCENE, [91,837])
 
-print(test_indices)
 loader = DataLoader(DATA_PATH)
 images_data = loader.load_dataset(SCENE, test_indices)
-pose = images_data[2]
 
-t = images_data[2][:NUM_TEST_IMAGES, :, :]
+ground_truth = images_data[2][:NUM_TEST_IMAGES, :, :]
 rans = []
 
-# for i in range(NUM_TEST_IMAGES):
-#         rans.append(ransac.Ransac(images_data, forest, np.array([i])))
-# with Pool(processes=12) as pool:
-#    r = pool.map(parallel, rans)
+for i in range(NUM_TEST_IMAGES):
+        rans.append(ransac.Ransac(images_data, forest, np.array([i])))
+with  multiprocessing.Pool(processes= multiprocessing.cpu_count()) as pool:
+   poses = pool.map(parallel, rans)
+
+result = np.zeros((NUM_TEST_IMAGES, 4, 4))
+for entry in poses:
+    pose = entry[0]
+    index = entry[1]
+    result[index,:,:] = pose
 
 
 
-ransac = ransac.Ransac(images_data, forest, np.arange(NUM_TEST_IMAGES))
+translation_err = get_translational_error(result, ground_truth)
+angular_err  = get_angular_error(result, ground_truth)
 
-t1 = time.time()
-poses = ransac.find_poses()
-print(time.time() - t1)
-a = 1
-translation_err = get_translational_error(poses, images_data[2][:NUM_TEST_IMAGES, :, :])
-angular_err  = get_angular_error(poses, images_data[2][:NUM_TEST_IMAGES, :, :])
 
-print("asd")
+target_dir = os.path.join(OUTPUT_PATH, f"{TIMESTAMP}_{params['SCENE']}", '')
+os.makedirs(target_dir)
+save_object(result, os.path.join(target_dir, f'predicted_pose.pkl'))
+save_object(ground_truth, os.path.join(target_dir, f'ground_truth.pkl'))
