@@ -4,12 +4,12 @@
 
 %\documentclass[review]{cvpr}
 \documentclass[final]{cvpr}
-
 \usepackage{times}
 \usepackage{epsfig}
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{svg}
 \usepackage{subfig}
 \usepackage[printonlyused, smaller]{acronym}
 % Include other packages here, before hyperref.
@@ -57,23 +57,43 @@ Nadine Theisen\\
 
 %%%%%%%%% ABSTRACT
 \begin{abstract}
-This project aims to realize the approach of \cite{shotton2013} to infer the position and rotation in 3D space of a RGD-D camera given single 2D images. A regression forest is used to predict the 3D position of any single pixel in the world's space given the RGB and depth features of the images in the training set. Given the 3D locations of a set of pixels, an initial set of hypothesized camera poses are deduced by applying the regression forest and are then optimized with a preemptive RANSAC. The algorithm is evaluated on the 7-scenes dataset~\cite{glocker2013} which contains images with RGB and depth features for 7 different 3D scenes. We find that the regression forest predicts $91.2\%$ valid 3D world coordinates on average for the 2D pixels but also comes with rather large deviations for some of the 3D scenes. %ergebnis für camera poses
-
-   
+This project aims to realize the approach of~\cite{shotton2013} to infer the position and rotation of a camera
+in the 3D world space given a set of 2D images. A regression forest is used to predict the correspondencies between 
+pixels and world coordinates using RGB and depth information. An initial set of hypothesized camera
+poses are deduced by applying the regression forest and are then optimized with a preemptive RANSAC. The algorithm 
+is evaluated on the 7-scenes dataset~\cite{glocker2013} which contains RGB images with corresponding depth
+information for each pixel of 7 different 3D scenes. Subsequently, the ability of the forest to predict 2D-3D 
+correspondencies is evaluated. To verify the estimated camera poses of the RANSAC algorithm, the translational and 
+angular error with respect to the known ground truths are measured. These findings are then compared to the results
+of~\cite{shotton2013}. 
 \end{abstract}
 
 %%%%%%%%% BODY TEXT
 \section{Introduction}
-cite it~\cite{shotton2013}
 
-In this project, we provide an approach of interferring the pose of a camera in the world coordinate system. Given a data set consisting of RGB-D images as well as camera pose matrices, the camera for a given frame can be localized. The method we use is based on the paper by \cite{shotton2013}.  The whole process is divided into two subsequent steps which will be explained in more detail in the following sections.
+In this project, we provide an approach of interferring the pose of a camera in the world coordinate system. 
+Given a data set consisting of RGB-D images as well as camera pose matrices, the camera for a given frame can 
+be localized. The method we use is based on the paper by \cite{shotton2013}.  The whole process is divided into 
+two subsequent steps which will be explained in more detail in the following sections.
 \begin{enumerate}
 \item Finding correspondencies between 2D image pixels and 3D world coordinates  \\
 
-In the first step, we apply a \textit{Regression Forest} to a perform scene coordinate regression. A regression tree can be evaluated at any 2D image pixel \textbf{p} and predicts the corresponding position in the 3D world space of the scene as a combination of the predictions of all decision trees in the forest. We use the scene coordinates introduced by \cite{shotton2013} as labels for training the regression forest. Using the calibrated depth \textit{D}(\textbf{p}), it is possible to compute the 3D camera space coordinate \textbf{x} which can be transformed into the scene's world coordinate frame with the camera pose matrices \textit{H} giving  the scene world coordinates \textbf{m}. The forest is then trained on randomly chosen sets (\textbf{p,m}) for each tree.
+In the first step, we apply a \textit{Regression Forest} to a perform scene coordinate regression. 
+A regression tree can be evaluated at any 2D image pixel \textbf{p} and predicts the corresponding position 
+in the 3D world space of the scene as a combination of the predictions of all decision trees in the forest. 
+We use the scene coordinates introduced by \cite{shotton2013} as labels for training the regression forest. 
+Using the calibrated depth \textit{D}(\textbf{p}), it is possible to compute the 3D camera space coordinate 
+textbf{x} which can be transformed into the scene's world coordinate frame with the camera pose matrices \textit{H}
+ giving  the scene world coordinates \textbf{m}. The forest is then trained on randomly chosen sets (\textbf{p,m})
+  for each tree.
 
 \item Optimizing the camera pose for a given image \\
-In this part, the scene coordinates associated with a 2D pixel will be used to estimate the camera location and orientation. The location is estimated by minimizing an energy function over a camera pose hypothesis \textit{H} determined by applying the regression forest on a small set of pixels. Then, the number of pixels which are outliers according to the included error function is counted. The energy is optimized using a RANSAC algorithm. In the first step, the energy of a set of initial hypotheses is updated after evaluating the forest at a random sample of pixels.
+In this part, the scene coordinates associated with a 2D pixel will be used to estimate the camera location and
+ orientation. The location is estimated by minimizing an energy function over a camera pose hypothesis \textit{H} 
+ determined by applying the regression forest on a small set of pixels. Then, the number of pixels which are 
+ outliers according to the included error function is counted. The energy is optimized using a RANSAC algorithm.
+  In the first step, the energy of a set of initial hypotheses is updated after evaluating the forest at a random 
+  sample of pixels.
 \end{enumerate}
     
     
@@ -320,43 +340,18 @@ and is explained in Subsection.
 
 
 \subsection{Image to World Point Correspondencies}
-To validate the  of the forest, the predicted coordinates of the forest are compared to the known ground truths using 
-the $\ell^2$-norm. Predicting the 3D world coordinates on the test data set, the forests exhibit
-$91.2\%$ valid coordinates on average. This implies that a forest is capable of finding correspondencies between 
-image and world coordinates. Correspondencies that could not be predicted during feature generationare caused by the 
-fact that sample pixels are potentially shifted out of the image frame or correspond to an invalid depth value. 
+The forests exhibits the basic ability to predict 3D world coordinates based on 2D image pixels and 
+qualitative results are shown in~\ref{fig:pointclouds}. For each scene, the regression forest is evaluated by 
+randomly choosing $500$ images and sampling $5,000$ pixels from the test data set. The pointclouds 
+allow to recognize the scenes even by a sparse number of utilized sample pixels. 
 
-To further investigate the forests, the deviations from the predicted world coordinates to the ground truths is shown. 
-In Table~\ref{tab:forest-error} the deviation in meters and corresponding variance indicates rather large errors.
-It varies among $x.y$m for the scene XY to $x.y$m for the scene CSAS.
+However, most scenes show areas where no 3D coordinates
+were predicted. This could be attributed to a false prediction of 3D points. Due to the fact that the forest is 
+trained on known world coordinates, the assignment of a pixel to a world point that is actually present in the 
+scene is possible. 
 
-% table deviations
-\begin{table}[h]
+\begin{figure*}[h!]
 	\begin{center}
-	\begin{tabular}{|l|c|}
-	\hline
-	Scene & average deviation [m]\\
-	\hline\hline
-	Chess 		& 	$1.060 \pm 0.4357$ \\
-	Fire 		& 	$0.0 \pm 1.34$	\\
-	Heads 		& 	$0.0 \pm 1.34$	\\
-	Office 		&   $2.007 \pm 1.456$ \\
-	Pumpkin 	& 	$1.477 \pm 0.7523$ \\
-	RedKitchen 	& 	$1.747 \pm 1.017$ \\
-	Stairs 		& 	$1.504 \pm 0.873$ \\
-	\hline
-	\end{tabular}
-	\end{center}
-	\label{tab:forest-error}
-	\caption{Average deviation in meters between the predicted 3D world cordinates of the forest trained with 
-	'Depth Adaptive RGB' features and the respective ground truths for each scene using the $\ell^2$-norm.}
-\end{table}
-
-However, when looking at the pointclouds of the predicted world coordinates the scenes can be recognized. 
-
-\begin{figure*}[ht!]
-	\begin{center}
-	% \fbox{\rule{0pt}{2in} \rule{0.9\linewidth}{0pt}}
 	
 	\subfloat[~Chess]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
 	\subfloat[~Fire]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
@@ -366,6 +361,7 @@ However, when looking at the pointclouds of the predicted world coordinates the 
 	\subfloat[~Pumpkin]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
 	\subfloat[~Red Kitchen]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
 	\subfloat[~Stairs]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}
+
 	\end{center}
 	\caption{For each scene a forest is trained with the hyperparameters stated in~\ref{XX}. The forest 
 	is then evaluated for $500$ test images with each having $5,000$ sample pixels. For each pixel the coresponding
@@ -373,7 +369,52 @@ However, when looking at the pointclouds of the predicted world coordinates the 
 	\label{fig:pointclouds}
 	\label{fig:onecol}
 \end{figure*}
-	
+
+Another explanation are invalid values during feature generation. Correspondencies that could not be predicted are
+caused by the fact that sample pixels are potentially shifted out of the image frame or correspond to an invalid depth value. 
+Predicting the 3D world coordinates for all scenes, the forests exhibit $91.2\%$ valid predictions on average. 
+This implies that a forest is capable of finding correspondencies.
+
+To further investigate these findings, the predicted coordinates of the forest are compared to the known ground truths using 
+the $\ell^2$-norm. In Table~\ref{tab:forest-error} the deviation in meters and corresponding variance indicates rather large 
+errors. It varies among $x.y$m for the scene XY to $x.y$m for the scene CSAS. This suggests that the mapping is not as precise
+as desired. By looking at the histogram of accumulative errors for each scene in Figure~\ref{fig:error-hist}, it appears that 
+there exist numerous predictions with small error. It can therefore be expected that the poses that will be predicted by the 
+RANSAC algorithm still produce desirable results due to its greedy approach.  
+
+\begin{table}[h]
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Scene & average deviation [m]\\
+	\hline\hline
+	Chess 		& 	$1.079 \pm 0.388$ \\
+	Fire 		& 	$0.893 \pm 0.313$	\\
+	Heads 		& 	$0.0 \pm 0.0$	\\
+	Office 		&   $0.0 \pm 0.0$ \\
+	Pumpkin 	& 	$1.413 \pm 0.615$ \\
+	RedKitchen 	& 	$1.705 \pm 0.854$ \\
+	Stairs 		& 	$1.496 \pm 0.753$ \\
+	\hline
+	\end{tabular}
+	\end{center}
+	\label{tab:forest-error}
+	\caption{Average deviation in meters between the predicted 3D world cordinates of the forest trained with 
+	'Depth Adaptive RGB' features and the respective ground truths using the $\ell^2$-norm. A total of
+	$500$ images each with $5,000$ sample pixels is used for evaluation for each scene.}
+\end{table}
+
+Comparing the average deviations for each scene to the findings of Shotton et al.~\cite[Table 1]{shotton2013}, similarities appear.
+The camera poses estimated by their implementation show the best results for the scenes "Chess" and "Fire". 
+This is also indicated by the findings of the forests in this section. It is to be expected, that the predicted camera 
+poses in the following section follow the same trend. Since no precise measurments were
+made in~\cite{shotton2013} a direct comparison of the deviations is not possible.
+
+\begin{figure}[ht!]
+	\includegraphics[width=0.5\textwidth]{images/test.pdf}
+	\caption{TODO: PUT FOREST ERROR HISTOGRAM HERE}
+	\label{fig:error-hist}
+\end{figure}
 
 
 \subsection{Camera Pose Predictions}
@@ -381,6 +422,11 @@ tranlational, angular error
 plots
 
 \section{Conclusion}
+
+% FUTURE:
+% other feature types
+% still space to optimize
+% runtimes
 
 \section*{Abbreviations}
 \begin{acronym}
