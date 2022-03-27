@@ -48,7 +48,7 @@ Marven Hinze\\
 \and
 Nadine Theisen\\
 \tt 3475402\\
-{\tt\small nadine.theissen@stud.uni-heidelberg.de}
+{\tt\small nadine.theisen@stud.uni-heidelberg.de}
 }
 
 \maketitle
@@ -238,10 +238,17 @@ where $tr(R)$ is the trace of a matrix.
 
 %-------------------------------------------------------------------------
 \section{Results}
-In this section we present and evaluate our findings. For each scene a forest is trained with the hyperparameters given in 
-Table~\ref{tab:params} and the 3D world coordinates are predicted by using unseen images from the test data set. To 
-validate the results, the predicted coordinates of the forest are compared to the known ground truths using the $\ell^2$-norm and
-is shown in the following subsection.
+In this section we give some background on the implementation and the parameters that have been chosen in order to 
+run the forest and RANSAC optimization. Then, the findings are evaluated. Firstly, it is investigated how accurate the 
+forest predicts the 3D world coordinates from 2D image coordinates. Subsequently, the trained forest is used to obtain 
+the camera poses for a number of unseen test images using RANSAC optimization. All scenes of the 7-scenes dataset 
+are evaluated and their results are compared among them and to the reference paper of Shotton et al.~\cite{shotton2013}. 
+
+\subsection{Implementation and Parameter Settings}
+For each scene a forest is trained with the hyperparameters given in Table~\ref{tab:params-forest}. These parameters are 
+chosen according to the values in~\cite{shotton2013}. Thereby, only the feature type 'Depth Adaptive RGB' is considered. The number of 
+parameters that are sampled per image wasn't given and we found the value $1024$ to work out well. A further increase wasn't 
+improving the number of correct world coordinate predictions.
 \begin{table}[h!]
 	\begin{center}
 	\begin{tabular}{|l|c|}
@@ -253,20 +260,42 @@ is shown in the following subsection.
 	Batch Size & $500$ \\
 	Pixel Samples per Image & $5000$ \\
 	Parameter Samples per Image  & $1024$ \\
-	Feature Type & Depth / DA-RGB \\
+	Feature Type & DA-RGB \\
 	\hline
 	\end{tabular}
 	\end{center}
-	\label{tab:params}
+	\label{tab:params-forest}
 	\caption{Hyperparameters used for training forests.}
 \end{table}
 
-Based on the predicted 2D-3D correspondencies of the forest, the camera pose is estimated by the RANSAC optimization.
-For each image in the test data set, the respective camera pose is obtained and evaluated in terms of the translational 
-and angular error with respect to the true camera poses. The findings for each scene are subsequently compared
-to the results of~\cite{shotton2013}. Thereby, the amount of correctly classified camera poses is taken as a measure 
-and is explained in Subsection~\ref{subsec:metrics}.
 
+
+Based on the predicted 2D-3D correspondencies of the forest, the camera pose is estimated by the RANSAC optimization.
+\begin{table}[h!]
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Hyperparameter & Value \\
+	\hline\hline
+	Number of Trees & $5$ \\
+	Max Tree Depth & $16$ \\
+	\hline
+	\end{tabular}
+	\end{center}
+	\label{tab:params-ransac}
+	\caption{Hyperparameters used RANSAC optimization.}
+\end{table}
+
+
+For each image in the test data set, the respective camera pose is obtained and evaluated in terms of the translational 
+and angular error with respect to the true camera poses which is explained further in Subsection ~\ref{subsec:metrics}.
+ 
+
+The findings for each scene are subsequently compared
+to the results of~\cite{shotton2013}. Thereby, the amount of correctly classified camera poses is taken as a measure 
+and is explained in Subsection.
+
+\textbf{Runtime}: 
 
 %At first, each trained forest (per scene) is analyzed in 
 %terms of the ability to find 2D-3D correspondencies. Then, the estimated camera poses are evaluated as described 
@@ -274,9 +303,12 @@ and is explained in Subsection~\ref{subsec:metrics}.
 
 
 \subsection{Image to World Point Correspondencies}
-Predicting the 3D world coordinates using 'Depth Adaptive RGB' features on the test data set, the forests exhibit 
+To validate the  of the forest, the predicted coordinates of the forest are compared to the known ground truths using 
+the $\ell^2$-norm. Predicting the 3D world coordinates on the test data set, the forests exhibit
 $91.2\%$ valid coordinates on average. This implies that a forest is capable of finding correspondencies between 
-image and world coordinates. However, the average deviations shown in Table~\ref{tab:forest-error} indicate rather 
+image and world coordinates. 
+
+However, the average deviations shown in Table~\ref{tab:forest-error} indicate rather 
 large deviations from the ground truth. % aber nicht schlimm, weil ransac ja optimiert (?), earum aber so groß? vgl mit Paper
 
 % table deviations
