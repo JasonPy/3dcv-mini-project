@@ -171,3 +171,24 @@ class SceneCoordinateEvaluator:
             valid_mask = ~np.any(pred == -np.inf, axis=1)
             errors.append(np.linalg.norm(ground_truth[valid_mask] - pred[valid_mask], axis=1))
         return errors
+
+    def get_mean_forest_error(self, forest_predictions, ground_truth):
+        errors = []
+
+        for i in range(forest_predictions[0].shape[0]):
+            preds = np.zeros((len(forest_predictions),3)) 
+            gts = np.zeros((len(forest_predictions),3)) 
+
+            for j, tree in enumerate(forest_predictions):
+                preds[j] = tree[i]
+                gts[j] = ground_truth[i]
+
+            valid_mask = ~np.any(np.isinf(preds), axis=1)
+
+            if np.sum(valid_mask) != 0:
+                valid_pred = preds[valid_mask].reshape((np.sum(valid_mask), 3))
+                valid_gts = gts[valid_mask].reshape((np.sum(valid_mask), 3))
+                error = np.linalg.norm(valid_pred - valid_gts, axis=1)
+                errors.append(np.mean(error))
+
+        return errors
