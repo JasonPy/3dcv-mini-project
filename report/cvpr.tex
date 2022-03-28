@@ -15,6 +15,8 @@
 \usepackage{multirow}
 \usepackage{makecell}
 % Include other packages here, before hyperref.
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
 % If you comment hyperref and then uncomment it, you should delete
 % egpaper.aux before re-running latex.  (Or just hit 'q' on the first latex
@@ -107,7 +109,10 @@ In this part, the scene coordinates associated with a 2D pixel will be used to e
 
 % What data is given
 % 	-> Image data including depth, camera poses
-We use the 7-scenes dataset~\cite{glocker2013} set which consists of seven different scenes with each between 2,000 and 12,000 frames. To each frame the corresponding depth map and the 4×4 matrix \textit{H} in homogeneous coordinates which encodes the rotation and the translation from camera space to world space. The full data set was obtained using a Kinect RGB-D camera at 640×480 resolution. The dataset is split into training and test data.
+We use the 7-scenes dataset~\cite{glocker2013} set which consists of seven different scenes with each between 
+2,000 and 12,000 frames. To each frame the corresponding depth map and the 4×4 matrix \textit{H} in homogeneous 
+coordinates which encodes the rotation and the translation from camera space to world space. The full data set 
+was obtained using a Kinect RGB-D camera at 640×480 resolution. The dataset is split into training and test data.
 
 %-------------------------------------------------------------------------
 \subsection{Related Work}
@@ -244,6 +249,99 @@ $f_{\theta}(\boldsymbol{p}) \leq \tau$.
 
 %-------------------------------------------------------------------------
 \subsection{RANSAC Optimization}
+The predicted world scene coordinates of the forest are used to derive the corresponding camera pose matrix for a given image. 
+The objective of the optimization is to find a camera pose matrix that minimizes an energy $E$,
+\begin{equation}\label{energy_function}
+	E(H) = \sum_{i \in I} \rho(\min_{\boldsymbol{m} \in \boldsymbol{M_{i}}} 
+	\| \boldsymbol{m} - H \boldsymbol{x_{i}} \|_{2}) = \sum_{i \in I}e_{i}(H)
+\end{equation}
+where as $i \in I$ is a pixel index,  $\rho$ a top-hat error function with a width of $0.1$m, $M_{i}$ 
+the set of predictions for pixel $\boldsymbol{p_{i}}$, $H$ a camera pose hypothesis and $\boldsymbol{x_{i}}$ is the camera
+scene coordinate of $\boldsymbol{p_{i}}$ \cite{shotton2013}. If $\rho$ returns $0$ for a given pixel, it is considered
+to be an inlier, otherwise it is an outlier.
+
+The hypotheses optimization is based on an adapted version of preemptive RANSAC \cite{shotton2013}.
+Algorithm \autoref{ransac} shows the pseudo-code of the RANSAC optimization.
+The procedure starts with the initialization of $K$ hypotheses for the camera pose matrix. 
+The next step is to create a pixel batch $B$,
+each hypothesis is evaluated on this batch. The resulting inliers per hypothesis  are stored and their energy is 
+updated. Furthermore, to reduce the runtime, the mode $\boldsymbol{m}$ from \ref{energy_function} is stored for
+the pixel inlier.
+The next step is to sort the hypotheses by their energy in ascending order and discard the top half. Next, the remaining hypotheses are refined.
+
+\begin{algorithm}
+	\caption{RANSAC optimization}\label{ransac}
+\begin{algorithmic}[1]
+	\State  $K \gets K_{init}$
+	\State initialize hypotheses $\{ H_{K} \}_{k=1}^{K}	$
+	\State initialize energies $E_{k}$
+	\While{$K > 1$}
+		\State sample random pixel batch $B$
+		\ForAll{$i \in B$}
+			\State $\boldsymbol{M_{i}} = forest(i)$
+			\ForAll{$k \in \{1, ..., K\}}$
+				\State $E_{k} \gets E_{k} + e_{i}(H_{k})$
+				\If{$e_{i}(H_{k})$ is $0$}
+					\State add i to $inliers_{k}$
+					\State add $\boldsymbol{m}$ to $modes_{k}$
+				\EndIf
+			\EndFor
+		\EndFor
+		\State sort hypotheses by $E_{k}$
+		\State $K \gets \lfloor \frac{K}{2} \rfloor$
+		\State refine hypotheses $H_{k}$ on $inliers_{k}$ for $k=1, ...,K$
+
+	\EndWhile
+	
+	\State \Return $H_{k}$
+	
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Hypotheses initialization}
+To initialize a hypothesis, three random pixels $\boldsymbol{p_{i}}$ with $i \in \{0,1,2\}$ are sampled. The pixel $\boldsymbol{p_{i}}$ must have a depth unequal to $6553$ and $0$. Every $\boldsymbol{p_{i}}$ is evaluated on the forest, this results in three sets 
+$\boldsymbol{M_{i}}$ containing the prediction $\boldsymbol{m}$ from every tree. For each $p_{i}$ a random prediction is sampled from $\boldsymbol{M_{i}}$. Furthermore, for every $\boldsymbol{p_{i}}$ the camera scene coordinate $\boldsymbol{P}$ is calculated.
+
+\begin{equation}
+	\boldsymbol{P} = (\boldsymbol{C}^{-1} \cdot \boldsymbol{\tilde{p_{i}}} ) \cdot d
+\end{equation}
+
+where $\boldsymbol{C}$ is the intrinsic camera matrix, $\boldsymbol{\tilde{p_{i}}}$ the pixel $\boldsymbol{p_{i}}$ in
+homogeneous coordinates and $d$ is the depth value for $\boldsymbol{p_{i}}$ in meters. 
+
+For finding the best
+rotation between the camera scene and world coordinates, the Kabsch algorithm is used. The Kabsch algorithm allows to find the best rotation that transforms one set of vectors into a second set of vectors \cite{Kabsch1976}.
+Let $M$ be a matrix containing the camera scene coordinates row wise and $W$ a matrix containing
+the world coordinates, where as $\boldsymbol{\bar{m}}$ and $\boldsymbol{\bar{w}}$ are the mean coordinates.
+To find the best rotation one needs to compute the cross covariance matrix $C$ of $M$ and $W$, the 
+next step is the application of a singular value decomposition on $C$ \cite{Brachmann2020}.
+
+\begin{equation}
+	C = U \Sigma V^T
+\end{equation}
+
+The optimal rotation $R$ and the translation $\boldsymbol{t}$ are then obtained by \cite{Brachmann2020}:
+
+\begin{equation}
+	\begin{split}
+		R &= V 
+		\begin{bmatrix}
+			1 & 0 & 0\\
+			0 & 1 & 0\\
+			0 & 0 & det(VU^T)
+		\end{bmatrix}
+		U^T \\
+		\boldsymbol{t} &= \boldsymbol{\bar{w}} - R \boldsymbol{\bar{m}}
+	\end{split}
+\end{equation}
+ By combining $R$ and $\boldsymbol{t}$ into an affine transformation the initial hypothesis $H$ is obtained.
+ 
+\subsubsection{Pose refinement}
+For refinement of a hypothesis the respective pixel inliers are retrieved and their camera scene 
+coordinates are calculated. These camera scene coordinates and the stored predictions for the pixel inliers 
+are passed to the Kabsch algorithm, the returned affine transformation is then considered as the refined pose.
+
+
 
 %-------------------------------------------------------------------------
 \section{Experiment Evaluation} \label{sec:eval}
@@ -324,8 +422,9 @@ value $1024$ to work out well, because further increase wasn't improving the num
 	\hline
 	Hyperparameter & Value \\
 	\hline\hline
-	Number of Trees & $5$ \\
-	Max Tree Depth & $16$ \\
+	Size of batch $B$ & $500$ \\
+	$K_{init}$ & $1024$ \\
+	
 	\hline
 	\end{tabular}
 	\end{center}
