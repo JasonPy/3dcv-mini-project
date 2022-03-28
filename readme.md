@@ -55,7 +55,7 @@ To get a camera pose, one needs to create a object of the class Ransac, containe
 |k | int, amount of initial hypotheses |
 |top_hat_width | float, specifing the maximal distance for which a pixel is cosidered as inlier|
 
-The file `./demo.ipynb` contains an example of how to use the class RANSAC. It is also shown how to execute the RANSAC can be executed in parallel since.
+The file `./demo.ipynb` contains an example of how to use the class RANSAC. It is also shown how to execute the RANSAC parallel.
 # Results
 
 # Future Thoughts
