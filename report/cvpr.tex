@@ -12,6 +12,8 @@
 \usepackage{svg}
 \usepackage{subfig}
 \usepackage[printonlyused, smaller]{acronym}
+\usepackage{multirow}
+\usepackage{makecell}
 % Include other packages here, before hyperref.
 
 % If you comment hyperref and then uncomment it, you should delete
@@ -244,15 +246,21 @@ $f_{\theta}(\boldsymbol{p}) \leq \tau$.
 \subsection{RANSAC Optimization}
 
 %-------------------------------------------------------------------------
-\section{Experiment Evaluation}
+\section{Experiment Evaluation} \label{sec:eval}
+To verify the outcome of the regression forest and consecutive RANSAC optimization, the utilized metrics are described
+in the following section. As basic error measurement of the forests predicted world coordinates to the ground truth the 
+$\ell^2$-norm us used. Thereby, the error per scene is calculated by taking the average deviation in meters 
+over all trees within a forest. 
+
+The camera poses predicted by the RANSAC algorithm are compared using the translational and angular error 
+which are further described in the subsection below. All findings are then related to the results obtained by 
+Shotton et al.~\cite{shotton2013}. 
 
 
 \subsection{Metrics} \label{subsec:metrics}
 To evaluate the estimated camera poses, the translational and angular error with respect to the 
-ground truth camera poses is measured. In particular, a translational error of at 
-most $5$cm and angular error of at most $5^{\circ}$ is considered to be a correctly predicted pose. 
-
-Let the estimated pose matrix $H_{est}$ and the ground truth $H_{gt}$ be $4 \times 4$ matrices
+ground truth camera poses is measured. Let the estimated pose matrix $H_{est}$ and the ground truth 
+$H_{gt}$ be $4 \times 4$ matrices
 in homogeneous coordinates that encode the location and orientation of the camera in the world 
 coordinate system. To measure the translational offset between them, the translation vectors 
 $\boldsymbol{t_{est}}, \boldsymbol{t_{gt}} \in \mathbb{R}^3$ of the matrices are used.
@@ -276,16 +284,12 @@ where $tr(R)$ is the trace of a matrix.
 %-------------------------------------------------------------------------
 \section{Results}
 In this section we give some background on the implementation and the parameters that have been chosen in order to 
-run the forest and RANSAC optimization. Then, the findings are evaluated. Firstly, it is investigated how accurate the 
+run the forest and RANSAC optimization. Then, the findings are evaluated according to the measurements described
+in Section~\ref{sec:eval}. Firstly, it is investigated how accurate the 
 forest predicts the 3D world coordinates from 2D image coordinates. Subsequently, the trained forest is used to obtain 
-the camera poses for a number of unseen test images using RANSAC optimization. All scenes of the 7-scenes dataset 
+the camera poses for a number of unseen test images using RANSAC optimization. Four out of the seven scenes 
 are evaluated and their results are compared among them and to the reference paper of Shotton et al.~\cite{shotton2013}. 
 
-\subsection{Implementation and Parameter Settings}
-For each scene a forest is trained with the hyperparameters given in Table~\ref{tab:params-forest}. These parameters are 
-chosen according to the values in~\cite{shotton2013}. Thereby, only the feature type 'Depth Adaptive RGB' is considered. The number of 
-parameters that are sampled per image wasn't given and we found the value $1024$ to work out well, because further increase wasn't 
-improving the number of correct world coordinate predictions.
 \begin{table}[h!]
 	\begin{center}
 	\begin{tabular}{|l|c|}
@@ -301,13 +305,19 @@ improving the number of correct world coordinate predictions.
 	\hline
 	\end{tabular}
 	\end{center}
-	\label{tab:params-forest}
 	\caption{Hyperparameters used for training forests.}
+	\label{tab:params-forest}
 \end{table}
 
+\subsection{Implementation and Parameter Settings}
+For the scenes \textit{Chess}, \textit{Fire},  \textit{Pumpkin},  \textit{Red Kitchen} and  \textit{Stairs} a forest is
+trained. These scenes are chosen because they show the most significant results for the feature type 'Depth Adaptive RGB' 
+which is considered for the following evaluations.
 
+The forests are trained with the hyperparameters given in Table~\ref{tab:params-forest} and are chosen according to the 
+values given in~\cite{shotton2013}. The number of parameter samples per image wasn't given and we found the
+value $1024$ to work out well, because further increase wasn't improving the number of correct world coordinate predictions.
 
-Based on the predicted 2D-3D correspondencies of the forest, the camera pose is estimated by the RANSAC optimization.
 \begin{table}[h!]
 	\begin{center}
 	\begin{tabular}{|l|c|}
@@ -323,16 +333,13 @@ Based on the predicted 2D-3D correspondencies of the forest, the camera pose is 
 	\caption{Hyperparameters used RANSAC optimization.}
 \end{table}
 
+The consecutive RANSAC optimazation uses the parameters given in~\ref{tab:params-ransac}. 
 
-For each image in the test data set, the respective camera pose is obtained and evaluated in terms of the translational 
-and angular error with respect to the true camera poses which is explained further in Subsection ~\ref{subsec:metrics}.
- 
 
-The findings for each scene are subsequently compared
-to the results of~\cite{shotton2013}. Thereby, the amount of correctly classified camera poses is taken as a measure 
-and is explained in Subsection.
+Finally, for each scene a total of $500$ random images from the test data with each having $5,000$ test pixels are used
+to predict the corresponding camera poses. 
 
-\textbf{Runtime}: 
+\textbf{Runtime}: is ...
 
 %At first, each trained forest (per scene) is analyzed in 
 %terms of the ability to find 2D-3D correspondencies. Then, the estimated camera poses are evaluated as described 
@@ -350,13 +357,11 @@ were predicted. This could be attributed to a false prediction of 3D points. Due
 trained on known world coordinates, the assignment of a pixel to a world point that is actually present in the 
 scene is possible. 
 
-\begin{figure*}[h!]
+\begin{figure}[h!]
 	\begin{center}
 	
 	\subfloat[~Chess]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
 	\subfloat[~Fire]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
-	\subfloat[~Heads]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
-	\subfloat[~Office]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}
 	\\
 	\subfloat[~Pumpkin]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
 	\subfloat[~Red Kitchen]{\includegraphics[width=0.2\textwidth]{images/pcs_stairs.png}}\,
@@ -368,7 +373,7 @@ scene is possible.
 	3D world coordinate is obtained. The resulting pointclouds are displayed in subfigures (a)-(g). }
 	\label{fig:pointclouds}
 	\label{fig:onecol}
-\end{figure*}
+\end{figure}
 
 Another explanation are invalid values during feature generation. Correspondencies that could not be predicted are
 caused by the fact that sample pixels are potentially shifted out of the image frame or correspond to an invalid depth value. 
@@ -382,7 +387,7 @@ as desired. By looking at the histogram of accumulative errors for each scene in
 there exist numerous predictions with small error. It can therefore be expected that the poses that will be predicted by the 
 RANSAC algorithm still produce desirable results due to its greedy approach.  
 
-\begin{table}[h]
+\begin{table}
 	\begin{center}
 	\begin{tabular}{|l|c|}
 	\hline
@@ -411,7 +416,7 @@ poses in the following section follow the same trend. Since no precise measurmen
 made in~\cite{shotton2013} a direct comparison of the deviations is not possible.
 
 \begin{figure}[ht!]
-	\includegraphics[width=0.5\textwidth]{images/test.pdf}
+	% \includegraphics[width=0.5\textwidth]{images/test.pdf}
 	\caption{TODO: PUT FOREST ERROR HISTOGRAM HERE}
 	\label{fig:error-hist}
 \end{figure}
@@ -420,6 +425,25 @@ made in~\cite{shotton2013} a direct comparison of the deviations is not possible
 \subsection{Camera Pose Predictions}
 tranlational, angular error
 plots
+
+\begin{table*}
+	\begin{center}
+	\begin{tabular}{|l|l|c|c|c|c|c|}
+									\hline
+									&               & Chess & Fire &  Pumpkin & RedKitchen & Stairs \\ \hline\hline
+	\multirow{2}{*}{Error}          & Translational [m] & $0.92 \pm 1.09$    & $0.68 \pm 0.78$     & $1.41 \pm 1.49$ & $1.89 \pm 1.31$ & $1.48 \pm 1.25$     \\ 
+									& Angular [°]       & $58.52 \pm 61.85$    & $40.06 \pm 44.83$      & $66.44 \pm 65.79$      & $91.01 \pm 59.82$         & $74.59 \pm 65.92$     \\ \hline \hline
+	\multirow{3}{*}{\makecell[l]{Correct \\ Poses [\%]} }  
+									& $5m, 5^{\circ}$      &   $14.25$    &    $\boldsymbol{18.25}$  &       $10.25$         &      $4.6$      &    $7.8$    \\  
+									& $10m, 10^{\circ}$      &    $25.75$   &  $\boldsymbol{29.75}$    &   $20.25$    &    $9.2$    &     $12.2$            \\
+									& $15m, 15^{\circ}$      &     $33.8$  &   $\boldsymbol{38.8}$   &  $25.75$     &      $10.8$      &      $14.2$  \\
+	\hline
+	\end{tabular}
+	\end{center}
+	\label{tab:pose-error}
+	\caption{TODO}
+\end{table*}
+
 
 \section{Conclusion}
 
