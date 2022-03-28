@@ -161,50 +161,12 @@ def regression_tree_worker(image_data, work_data, worker_params):
             print(f'Error in node {node_id}: All samples considered invalid')
             result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = w_s[0])
             progress += len_invalid * tree_levels_below
+            
         elif len_right == 0 or len_left == 0:
             # All samples are split to one side -> this should be a leaf node
-            splitr_len = 0
-            splitl_len = 0
-
-            while splitr_len == 0 or splitl_len == 0:
-                param_samples = param_sampler(tree.num_param_samples)
-
-                mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
-
-                scores = calculate_scores_for_params(
-                    image_data=image_data,
-                    p_s=p_s,
-                    w_s=w_s,
-                    param_samples=param_samples,
-                    objective_function=tree.objective_function,
-                    feature_type=tree.feature_type)
-
-                _delta_get_features = millis() - _ms_start
-
-                # Find best parameter and calculate split (again, I know)
-                max_score_index = np.argmin(scores)
-                best_params = param_samples[max_score_index]
-                mask_valid, mask_split = get_features_for_samples(image_data, p_s, best_params, tree.feature_type)
-
-                splitl_len = np.sum(mask_split)
-                splitr_len = np.sum(~mask_split)
-
-                w_s_valid = w_s[mask_valid]
-                w_s_left, w_s_right = split_set(w_s_valid, mask_split)
-
-                p_s_valid = p_s[mask_valid]
-                p_s_left, p_s_right = split_set(p_s_valid, mask_split)
-                
-            len_invalid = np.sum(~mask_valid)
-            progress += len_invalid * tree_levels_below
-
-            result = TreeWorkerResult(
-                node_id=node_id,
-                is_leaf=False,
-                params=best_params,
-                set_left=(p_s_left, w_s_left),
-                set_right=(p_s_right, w_s_right),
-                lengths=(len_data, len_invalid, len_left, len_right))
+            is_leaf_node = True
+            response = get_mode(w_s_valid)
+            result = TreeWorkerResult(node_id = node_id, is_leaf = True, response = response)
             
         else:
             # Report training progress on invalid nodes, trigger next node training
