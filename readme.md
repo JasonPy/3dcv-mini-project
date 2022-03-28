@@ -56,8 +56,4 @@ To get a camera pose, one needs to create a object of the class Ransac, containe
 |top_hat_width | float, specifing the maximal distance for which a pixel is cosidered as inlier|
 
 The file `./demo.ipynb` contains an example of how to use the class RANSAC. It is also shown how to execute the RANSAC parallel.
-# Results
 
-# Future Thoughts
-We were not able to provide this repository in form of a python package yet. This may be done in the future.
-Implement Feature Type DA_RGB_DEPTH
