@@ -44,7 +44,18 @@ The default parameters are set according to the specifications in [1]. Feel free
 The evaluation of the forest, is provided in the `demo.ipynb` notebook. Therefore, a number of random images is sampled from the test data set. Then corresponding image and true world coordinates are obtained, to compare the predictions later on. The forest is then tested with a batch of unseen images, or in particular their random 2D image coordinates. Eventually, the forest provides the associated 3D world coordinates predicted by each tree.
 
 # RANSAC Optimization
+To get a camera pose, one needs to create a object of the class Ransac, contained in `./source/ransac.py`. The paramerters for the RANSAC can be defined by the class parameters.
+ Hyperparameter | Type        | 
+| ------------- |:-------------:| 
+|image_data | a Tuple(RGB-image: np.array, Depth-image: np.array, camra pose: np.array)|
+|forest | a forest object |
+|indices | the indices of the images in the image_data |
+|number_pixles | int, specifingy the a mount of pixels used to find initial hypotheses |
+|batch_size | int,size of the batch for evaluating the hypotheses   |
+|k | int, amount of initial hypotheses |
+|top_hat_width | float, specifing the maximal distance for which a pixel is cosidered as inlier|
 
+The file `./demo.ipynb` contains an example of how to use the class RANSAC. It is also shown how to execute the RANSAC parallel.
 # Results
 
 # Future Thoughts
