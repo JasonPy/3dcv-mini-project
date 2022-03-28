@@ -62,12 +62,12 @@ Marven Hinze\\
 %%%%%%%%% ABSTRACT
 \begin{abstract}
 This project aims to realize the approach of~\cite{shotton2013} to infer the position and rotation of a camera
-in the 3D world space given a set of 2D images. A regression forest is used to predict the correspondencies between 
+in the 3D world space given a set of 2D images. A regression forest is used to predict the correspondences between 
 pixels and world coordinates using RGB and depth information. An initial set of hypothesized camera
 poses are deduced by applying the regression forest and are then optimized with a preemptive RANSAC. The algorithm 
 is evaluated on the 7-scenes dataset~\cite{glocker2013} which contains RGB images with corresponding depth
 information for each pixel of 7 different 3D scenes. Subsequently, the ability of the forest to predict 2D-3D 
-correspondencies is evaluated. To verify the estimated camera poses of the RANSAC algorithm, the translational and 
+correspondences is evaluated. To verify the estimated camera poses of the RANSAC algorithm, the translational and 
 angular error with respect to the known ground truths are measured. These findings are then compared to the results
 of~\cite{shotton2013}. 
 \end{abstract}
@@ -75,12 +75,12 @@ of~\cite{shotton2013}.
 %%%%%%%%% BODY TEXT
 \section{Introduction}
 Inferring the pose of a camera in a known 3D environment is a crucial part of many up-to-date applications.
-Especially in the area of robotics, where \ac{SLAM} algorithms are applied or in augumeted reality a sufficiently precise 
+Especially in the area of robotics, where \ac{SLAM} algorithms are applied or in augmented reality a sufficiently precise 
 estimate is required~\cite{shotton2013}. More recently, approaches using neural networks became present and provide
 a fast estimation of the position and orientation of a camera~\cite{Blanton2020}. 
 
-In this project, we provide an approach of interferring the pose of a camera in the world coordinate system
-based on the work of Shotton et al.~\cite{shotton2013}. Therefore, a regression forest is utilized to find correspondencies
+In this project, we provide an approach of interfering the pose of a camera in the world coordinate system
+based on the work of Shotton et al.~\cite{shotton2013}. Therefore, a regression forest is utilized to find correspondences
 between pixels in an image and world coordinates. Given a data set
 consisting of RGB-D images as well as depth information for each pixel, the 3D world coordinate can be estimated.
 
@@ -102,7 +102,7 @@ the predicted to the ground truth camera poses for each scene in the data set.
 
 %-------------------------------------------------------------------------
 \subsection{Related Work}
-Nowdays, many approaches to infer camera poses or poses of objects in general are based on either image-based approaches or 
+Nowadays, many approaches to infer camera poses or poses of objects in general are based on either image-based approaches or 
 sparse keypoint matching. The application of imaged-based pose estimation uses the whole image and matches different frames 
 using high level features like \ac{SIFT} or \ac{SURF}~\cite{Klein2008}. Thereby, an initial camera pose is refined using 
 the obtained features and known camera poses. The result is then calculated as a weighted average over the 
@@ -112,9 +112,9 @@ More recently, approaches concerning sparse feature matching gained interest~\ci
 instead matched with a large set of feature descriptors. This approach requires a lot of engineering regarding the feature
 description and matching process. The routine of inferring a camera pose presented in the reference paper of Shotton et al.~\cite{shotton2013}
 comes the difference that only low-level features are utilized. Simple pixel-based features are applied in order to train a
-regression forest without the need of feature descripters. The predictions of the camera pose are then made directly one the
+regression forest without the need of feature descriptors. The predictions of the camera pose are then made directly one the
 output of the forest which correlates 3D image pixels with 3D world coordinates. The underlying forest can additionally be 
-evaluated for abritrary pixel positions and is therefore sparse.
+evaluated for abrbitrary pixel positions and is therefore sparse.
 
 
 \section{Methods}
@@ -125,10 +125,10 @@ used for estimating the camera pose from the image data. We will not discuss all
 in full detail but only provide further explanations where we find it relevant
 for the presentation of our work and results.
 
-\subsection{Data Preperation}
+\subsection{Data Preparation}
 %-------------------------------------------------------------------------
-To train the regression forest the 7-scenes datset~\cite{glocker2013} is utilized. 
-Each scene consists of multiple image sequences that cover the are of interest. Using a RGB-D 
+To train the regression forest the 7-scenes dataset~\cite{glocker2013} is utilized. 
+Each scene consists of multiple image sequences that cover the area of interest. Using RGB-D 
 Kinect camera, depth information for each pixel is extracted. The resolution of the $24$ 
 bit RGB-images is $640\times480$ pixels and the corresponding $16$ bit depth map is given 
 in millimeters. For each image a $4\times4$ ground truth camera pose in homogenous coordinates 
@@ -149,7 +149,7 @@ labeling and the image-feature extraction on which the forests base their predic
 
 \subsubsection{Decision Trees}
 %-------------------------------------------------------------------------
-A regression forest consists of a number $N$ of regression trees, which each consist of
+A regression forest consists of a number $N$ of regression trees, which each consist 
 of root node and it's children~\cite{Criminisi2013}. We consider the special case of binary decision trees
 where each node (unless it is a leaf node) has a left and a right child. Each node $n$
 stores a set of parameters $\theta_n$ which are used in the calculation of a
@@ -164,7 +164,7 @@ The process of training the tree involves finding the set of parameters
 $\{\theta_n | \, \forall \, \text{nodes} \, n\}$ which results in the best predictions
 for previously unseen input data points $\boldsymbol{p}$. However, this final goal cannot
 be optimized directly during training, as this would entail optimization in the
-very large space of all possible parameters for all tree-nodes simultaneously. Therefore
+very large space of all possible parameters for all tree-nodes simultaneously. Therefor
 it is much more efficient to optimize the parameters one node at a time using a
 proxy-objective $Q(S_{\text{tot}},\, S_{\text{left}}(\theta),\, S_{\text{right}}(\theta))$
 which ideally leads to a similar result.
@@ -195,7 +195,7 @@ objective can be mathematically expressed as:
 Training the complete tree then involves choosing a set of images from which a number
 of sample pixels is drawn. These samples are then evaluated (i.e. split into left and right set)
 by the tree's root node for a number of parameter-sets. For each set of parameters, the
-split's score is calulacted using the objective function and the optimal parameters for
+split's score is calculated using the objective function and the optimal parameters for
 this node are recorded. The process is then repeated for the node's children with the corresponding
 set (left or right; split according to the optimal parameters) until either the set contains
 only one element or the maximum depth is reached.
@@ -241,16 +241,16 @@ The objective of the optimization is to find a camera pose matrix that minimizes
 	E(H) = \sum_{i \in I} \rho(\min_{\boldsymbol{m} \in \boldsymbol{M_{i}}} 
 	\| \boldsymbol{m} - H \boldsymbol{x_{i}} \|_{2}) = \sum_{i \in I}e_{i}(H)
 \end{equation}
-where as $i \in I$ is a pixel index,  $\rho$ a top-hat error function with a width of $0.1$m, $M_{i}$ 
+whereas $i \in I$ is a pixel index,  $\rho$ a top-hat error function with a width of $0.1$m, $M_{i}$ 
 the set of predictions for pixel $\boldsymbol{p_{i}}$, $H$ a camera pose hypothesis and $\boldsymbol{x_{i}}$ is the camera
 scene coordinate of $\boldsymbol{p_{i}}$ \cite{shotton2013}. If $\rho$ returns $0$ for a given pixel, it is considered
 to be an inlier, otherwise it is an outlier.
 
 The hypotheses optimization is based on an adapted version of preemptive RANSAC \cite{shotton2013}.
-Algorithm~\ref{ransac} shows the pseudo-code of the RANSAC optimization.
+Algorithm~\ref{ransac} shows the pseudocode of the RANSAC optimization.
 The procedure starts with the initialization of $K$ hypotheses for the camera pose matrix. 
 The next step is to create a pixel batch $B$,
-each hypothesis is evaluated on this batch. The resulting inliers per hypothesis  are stored and their energy is 
+each hypothesis is evaluated on this batch. The resulting inliers per hypothesis  are stored, and their energy is 
 updated. Furthermore, to reduce the runtime, the mode $\boldsymbol{m}$ from Equation~\ref{energy_function} is stored for
 the pixel inlier.
 The next step is to sort the hypotheses by their energy in ascending order and discard the top half. Next, the remaining hypotheses are refined.
@@ -299,7 +299,7 @@ homogeneous coordinates and $d$ is the depth value for $\boldsymbol{p_{i}}$ in m
 For finding the best
 rotation between the camera scene and world coordinates, the Kabsch algorithm is used. The Kabsch algorithm allows to find the best rotation that transforms one set of vectors into a second set of vectors \cite{Kabsch1976}.
 Let $M$ be a matrix containing the camera scene coordinates row wise and $W$ a matrix containing
-the world coordinates, where as $\boldsymbol{\bar{m}}$ and $\boldsymbol{\bar{w}}$ are the mean coordinates.
+the world coordinates, whereas $\boldsymbol{\bar{m}}$ and $\boldsymbol{\bar{w}}$ are the mean coordinates.
 To find the best rotation one needs to compute the cross covariance matrix $C$ of $M$ and $W$, the 
 next step is the application of a singular value decomposition on $C$ \cite{Brachmann2020}.
 
@@ -356,7 +356,7 @@ By applying the $\ell^2$-norm to the translation vectors, the translational erro
 \end{align}
 To compare two rotational poses, the angle of the difference rotation matrix $R$ is utilized. 
 Denote the whole $3\times3$ upper-left matrix of $H_{est}$ and $H_{gt}$ as $R_{est}$ and 
-$R_{gt}$ repectively. They refer to the orientation in space and the difference rotation can be computed 
+$R_{gt}$ respectively. They refer to the orientation in space and the difference rotation can be computed 
 as $R = R_{est}^TR_{gt}$. The angle between those two rotation matrices is the desired
 error measure and defined as
 \begin{align}
@@ -374,7 +374,7 @@ run the forest and RANSAC optimization. Then, the findings are evaluated accordi
 in Section~\ref{sec:eval}. Firstly, it is investigated how accurate the 
 forest predicts the 3D world coordinates from 2D image coordinates. Subsequently, the trained forest is used to obtain 
 the camera poses for a number of unseen test images using RANSAC optimization. Four out of the seven scenes 
-are evaluated and their results are compared among them and to the reference paper of Shotton et al.~\cite{shotton2013}. 
+are evaluated, and their results are compared among them and to the reference paper of Shotton et al.~\cite{shotton2013}. 
 
 \begin{table}[h!]
 	\begin{center}
@@ -401,7 +401,7 @@ trained. These scenes are chosen because they show the most significant results 
 which is considered for the following evaluations.
 
 The forests are trained with the hyperparameters given in Table~\ref{tab:params-forest} and are chosen according to the 
-values given in~\cite{shotton2013}. The number of parameter samples per image wasn't given and we found the
+values given in~\cite{shotton2013}. The number of parameter samples per image wasn't given, and we found the
 value $1024$ to work out well, because further increase wasn't improving the number of correct world coordinate predictions.
 For each scene $500$ random images from the test data set are used
 to predict the 3D world coordinates on the trained forest. Every image is evaluated with a number of $5,000$ test pixels.
@@ -443,14 +443,14 @@ We assume that this is due to the fact that python runs via an interpreter, whil
 
 	\end{center}
 	\caption{For each scene a forest is trained with the hyperparameters stated in Table~\ref{tab:params-forest}. The forest 
-	is then evaluated for $500$ test images with each having $5,000$ sample pixels. For each pixel the coresponding
-	3D world coordinate is obtained. The resulting pointclouds are displayed in subfigures (a)-(e). }
+	is then evaluated for $500$ test images with each having $5,000$ sample pixels. For each pixel the corresponding
+	3D world coordinate is obtained. The resulting point clouds are displayed in sub-figures (a)-(e). }
 	\label{fig:pointclouds}
 \end{figure}
 
-\subsection{Image to World Point Correspondencies} \label{subsec:eval-forest}
+\subsection{Image to World Point correspondences} \label{subsec:eval-forest}
 The forests exhibits the basic ability to predict 3D world coordinates based on 2D image pixels and 
-qualitative results are shown in Figure~\ref{fig:pointclouds}. The pointclouds 
+qualitative results are shown in Figure~\ref{fig:pointclouds}. The point clouds 
 allow to recognize the scenes even by a sparse number of utilized sample pixels. 
 
 However, most scenes show areas where no 3D coordinates
@@ -467,22 +467,22 @@ scene is possible.
 	Chess 		& 	$1.079 \pm 0.388$ \\
 	Fire 		& 	$0.893 \pm 0.313$	\\
 	Pumpkin 	& 	$1.413 \pm 0.615$ \\
-	RedKitchen 	& 	$1.705 \pm 0.854$ \\
+	Red Kitchen 	& 	$1.705 \pm 0.854$ \\
 	Stairs 		& 	$1.496 \pm 0.753$ \\
 	\hline
 	\end{tabular}
 	\end{center}
-	\caption{Average Error and standard deviation in meters between the predicted 3D world cordinates of the 
+	\caption{Average Error and standard deviation in meters between the predicted 3D world coordinates of the 
 	forest trained with 
 	'Depth Adaptive RGB' features and the respective ground truths using the $\ell^2$-norm. A total of
 	$500$ images each with $5,000$ sample pixels is used for evaluation for each scene.}
 	\label{tab:forest-error}
 \end{table}
 
-Another explanation are invalid values during feature generation. Correspondencies that could not be predicted are
+Another explanation are invalid values during feature generation. Correspondences that could not be predicted are
 caused by the fact that sample pixels are potentially shifted out of the image frame or correspond to an invalid depth value. 
 Predicting the 3D world coordinates for all scenes, the forests exhibit $91.2\%$ valid predictions on average. 
-This implies that a forest is capable of finding valid correspondencies.
+This implies that a forest is capable of finding valid correspondences.
 
 \begin{figure*}
 	\begin{center}
@@ -501,7 +501,7 @@ RANSAC algorithm deviate more than $5$cm and $5^\circ$.
 
 Comparing the average deviations for each scene to the findings of Shotton et al.~\cite[Table 1]{shotton2013}, similarities appear.
 The camera poses estimated by their implementation show the best results for the scenes "Chess" and "Fire". 
-This is also indicated by the findings of the forests in this section. Since no precise measurments were
+This is also indicated by the findings of the forests in this section. Since no precise measurements were
 made in~\cite{shotton2013} a direct comparison of the predicted world coordinates is not possible. It is to 
 be expected, that the obtained camera poses in the following section follow the same trend. 
 
@@ -509,7 +509,7 @@ be expected, that the obtained camera poses in the following section follow the 
 	\begin{center}
 	\begin{tabular}{|l|l|c|c|c|c|c|}
 									\hline
-									&               & Chess & Fire &  Pumpkin & RedKitchen & Stairs \\ \hline\hline
+									&               & Chess & Fire &  Pumpkin & Red Kitchen & Stairs \\ \hline\hline
 	\multirow{2}{*}{Error}          & Translational [m] & $0.92 \pm 1.09$    & $0.68 \pm 0.78$     & $1.41 \pm 1.49$ & $1.89 \pm 1.31$ & $1.48 \pm 1.25$     \\ 
 									& Angular [°]       & $58.52 \pm 61.85$    & $40.06 \pm 44.83$      & $66.44 \pm 65.79$      & $91.01 \pm 59.82$         & $74.59 \pm 65.92$     \\ \hline \hline
 	\multirow{3}{*}{\makecell[l]{Correct \\ Poses [\%]} }  
@@ -532,12 +532,12 @@ be expected, that the obtained camera poses in the following section follow the 
 The predicted camera poses show rather large deviations from the ground truths as shown in Table~\ref{tab:pose-error}.
 All scenes exhibit deviations with more than $0.68$m and $40.06^\circ$ which is fairly inaccurate. However, this is
 to be expected regarding the results of the forests stated in Subsection~\ref{subsec:eval-forest}. Having large deviations 
-of the image to world correspondencies already, the prediction of related camera poses based on these values can not lead
+of the image to world correspondences already, the prediction of related camera poses based on these values can not lead
 to higher accuracies. 
 
 Concerning the scenes \textit{Chess} and \textit{Fire}, the translational and angular error of the camera poses 
 are the smallest. 
-This is coherent with the precision of the predicted point correspondencies of the previous subsection. 
+This is coherent with the precision of the predicted point correspondences of the previous subsection. 
 That indicates that more precise regression forests lead to smaller error of the estimated camera pose 
 by the RANSAC optimization. 
 
@@ -549,21 +549,21 @@ in comparison to the other scenes.
 With increasing tolerance of a pose to be classified as \textit{correct} the percentage of correct poses increases. 
 Given a maximum of $5$cm and $5^\circ$ the results can not compete with~\cite{shotton2013}. Nevertheless, the trends found in 
 the data sets could be reproduced. The only exception is that the \textit{Fire} scene performs better in our implementation 
-which can be adressed to the performance of the respective forest shown in Subsection~\ref{subsec:eval-forest}.
+which can be addressed to the performance of the respective forest shown in Subsection~\ref{subsec:eval-forest}.
 
 
 \section{Conclusion}
-To estimate the pose of a camera a regression forest with consecutive RANSAC optimization is utilized. Pixels are sampeled from
+To estimate the pose of a camera a regression forest with consecutive RANSAC optimization is utilized. Pixels are sampled from
 random images of a scene and corresponding 3D world coordinates are predicted by the regression forest. Subsequently, 
-the RANSAC algorithm initializes a numer of camera pose hypotheses and refines them. To verfiy the results, the 7-scenes data 
+the RANSAC algorithm initializes a number of camera pose hypotheses and refines them. To verify the results, the 7-scenes data 
 set is used which consists of seven different 3D scenes. The predicted camera poses are then evaluated
 using the translational and angular error. These findings are compared to the results of Shotton et 
 al.~\cite{shotton2013}. 
 
 The best camera pose predictions were obtained for \textit{Fire} and \textit{Chess} and the worst for \textit{Red Kitchen}
 and \textit{Stairs}. Our results show the same trend as in~\cite{shotton2013}. However, our approach is not able
-to achieve a similar amount of correctly classified poses. This can be adressed to the larger deviations of predicted
-2D-3D corresondencies by the trained forests. 
+to achieve a similar amount of correctly classified poses. This can be addressed to the larger deviations of predicted
+2D-3D correspondences by the trained forests. 
 
 There is certainly potential to optimize our implementation in order to increase the overall accuracy of predicted camera poses.
 For the future an optimization of the utilized hyperparameters could be beneficial. Additionally, other feature types may be 
